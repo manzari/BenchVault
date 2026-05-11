@@ -1,0 +1,43 @@
+[package]
+name = "benchvault"
+version = "0.1.0"
+description = "3D printing file manager"
+authors = ["you"]
+edition = "2021"
+rust-version = "1.77"
+default-run = "benchvault"
+
+[lib]
+name = "benchvault_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+anyhow = "1"
+tokio = { version = "1", features = ["full"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate", "macros", "chrono"] }
+chrono = { version = "0.4", features = ["serde"] }
+specta = { version = "2.0.0-rc.20", features = ["derive", "serde"] }
+specta-typescript = "0.0.7"
+tauri-specta = { version = "2.0.0-rc.20", features = ["derive", "typescript"] }
+regex = "1"
+once_cell = "1"
+sha2 = "0.10"
+hex = "0.4"
+uuid = { version = "1", features = ["v4"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip", "brotli"] }
+tempfile = "3"
+notify = "8"
+notify-debouncer-full = "0.6"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
