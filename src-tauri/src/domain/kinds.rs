@@ -1,0 +1,78 @@
+use serde::{Deserialize, Serialize};
+use specta::Type;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum AssetKind {
+    Stl,
+    Gcode,
+    Image,
+    Cad,
+    Scad,
+    Other,
+}
+
+impl AssetKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AssetKind::Stl => "stl",
+            AssetKind::Gcode => "gcode",
+            AssetKind::Image => "image",
+            AssetKind::Cad => "cad",
+            AssetKind::Scad => "scad",
+            AssetKind::Other => "other",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "stl" => AssetKind::Stl,
+            "gcode" => AssetKind::Gcode,
+            "image" => AssetKind::Image,
+            "cad" => AssetKind::Cad,
+            "scad" => AssetKind::Scad,
+            _ => AssetKind::Other,
+        }
+    }
+}
+
+/// Polymorphic entity kind used by tags, links, and the FTS index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum EntityKind {
+    Object,
+    Folder,
+    Asset,
+    // Reserved for future entities — adding a variant here doesn't change SQL.
+}
+
+impl EntityKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            EntityKind::Object => "object",
+            EntityKind::Folder => "folder",
+            EntityKind::Asset => "asset",
+        }
+    }
+}
+
+/// Role of an asset within an object.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ObjectAssetRole {
+    StlPart,
+    Gcode,
+    Scad,
+    Attachment,
+}
+
+impl ObjectAssetRole {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ObjectAssetRole::StlPart => "stl_part",
+            ObjectAssetRole::Gcode => "gcode",
+            ObjectAssetRole::Scad => "scad",
+            ObjectAssetRole::Attachment => "attachment",
+        }
+    }
+}
