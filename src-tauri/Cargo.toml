@@ -1,8 +1,9 @@
 [package]
 name = "benchvault"
 version = "0.1.0"
-description = "3D printing file manager"
-authors = ["you"]
+description = "Desktop app for organizing 3D-printing projects"
+authors = ["manzari"]
+repository = "https://codeberg.org/manzari/benchvault"
 edition = "2021"
 rust-version = "1.77"
 default-run = "benchvault"

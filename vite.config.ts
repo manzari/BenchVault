@@ -10,6 +10,21 @@ export default defineConfig(async () => ({
     alias: { "@": path.resolve(__dirname, "src") },
   },
   clearScreen: false,
+  build: {
+    // Native modulepreload works in the Tauri webview; dropping the inline
+    // polyfill keeps the CSP free of inline <script>.
+    modulePreload: { polyfill: false },
+    chunkSizeWarningLimit: 1100,
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes("node_modules/three") || id.includes("node_modules/@react-three")) {
+            return "three";
+          }
+        },
+      },
+    },
+  },
   server: {
     port: 1420,
     strictPort: true,
