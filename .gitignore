@@ -4,6 +4,11 @@ dist
 *.log
 .idea
 
+# tsc emit (project references)
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
 # Rust / Tauri
 src-tauri/target
 src-tauri/gen

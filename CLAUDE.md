@@ -75,4 +75,4 @@ When adding a new entity type:
 
 ## Long-term scope
 
-This is a 3D **project** database, not just a 3D-printing file manager. v1 covers folders → objects → STL/gcode assets, but future versions will add printers, filaments, print jobs, slicer profiles, calibration prints, costs, CAD sources, etc. When designing schemas, module boundaries, or frontend types, prefer the generic primitives (assets, polymorphic tags, entity_links, FTS5) over v1-shaped ones — but don't gold-plate features beyond what v1 needs.
+This is a 3D **project** database, not just a 3D-printing file manager
