@@ -96,9 +96,24 @@ registry_name() {
       });' "$VERSION"
 }
 
-# link <type> <package-name>
+linked_repo() {
+  local type="$1" name="$2"
+  auth_config | curl -sS --config - "https://$HOST/api/v1/packages/$OWNER?type=$type" \
+    | node -e '
+      let s = ""; process.stdin.on("data", d => s += d).on("end", () => {
+        const hit = JSON.parse(s).find(p => p.name === process.argv[1]
+          && p.version.startsWith(process.argv[2]));
+        console.log(hit && hit.repository ? hit.repository.name : "");
+      });' "$name" "$VERSION"
+}
+
 link() {
-  local type="$1" name="$2" code
+  local type="$1" name="$2" code current
+  current="$(linked_repo "$type" "$name")"
+  if [[ "${current,,}" == "${REPO,,}" ]]; then
+    echo ">> $type/$name already linked to $OWNER/$current"
+    return
+  fi
   code="$(auth_config | curl -sS -o /dev/null -w '%{http_code}' --config - -X POST \
     "https://$HOST/api/v1/packages/$OWNER/$type/$name/-/link/$REPO")"
   case "$code" in
