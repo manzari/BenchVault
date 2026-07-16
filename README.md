@@ -1,3 +1,5 @@
+Mirrored on GitHub — development happens on Codeberg: https://codeberg.org/manzari/BenchVault
+
 # BenchVault
 
 A cross-platform (Linux-first) desktop app for organizing 3D-printing projects. Each **Object** groups the STL parts, OpenSCAD sources, sliced gcodes, images, and notes that belong to one thing you print — with slicer metadata parsed automatically and everything searchable.
@@ -5,6 +7,7 @@ A cross-platform (Linux-first) desktop app for organizing 3D-printing projects. 
 BenchVault owns a managed library on disk (human-readable folder layout), so your files stay plain files you can browse, back up, or take with you.
 
 ![BenchVault library dashboard](docs/screenshots/library.png)
+
 
 ## Features
 
