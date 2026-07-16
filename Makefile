@@ -4,7 +4,8 @@
 .DEFAULT_GOAL := help
 .PHONY: help install dev build frontend frontend-build \
         check fmt clippy test bindings clean \
-        install-host clean-install-host reinstall uninstall
+        install-host clean-install-host reinstall uninstall \
+        publish publish-only publish-link
 
 DEB := $(wildcard src-tauri/target/release/bundle/deb/*.deb)
 
@@ -44,6 +45,17 @@ reinstall: install-host ## Alias for install-host (apt reinstalls/upgrades in pl
 
 uninstall: ## Remove BenchVault from this host
 	sudo apt remove -y bench-vault
+
+## --- Publish to the Codeberg package registry (needs CODEBERG_TOKEN) ---
+
+publish: ## Build the bundles, upload them to Codeberg packages and link them to the repo
+	scripts/publish-to-codeberg.sh
+
+publish-only: ## Upload the already-built bundles to Codeberg and link them
+	scripts/publish-to-codeberg.sh --no-build
+
+publish-link: ## Only (re)link the already-uploaded packages to the repo
+	scripts/publish-to-codeberg.sh --link-only
 
 ## --- Frontend only (most invoke() calls fail without the Tauri shell) ---
 
