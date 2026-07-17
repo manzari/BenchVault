@@ -567,13 +567,19 @@ export type AssetKind = "stl" | "gcode" | "image" | "cad" | "scad" | "obj" | "st
 /**
  * An asset attached to an object plus role + sort info plus type-specific metadata.
  */
-export type AttachedAsset = { asset: Asset; role: ObjectAssetRole; sort_order: number; gcode_metadata: GcodeMetadata | null }
+export type AttachedAsset = { asset: Asset; role: ObjectAssetRole; sort_order: number; gcode_metadata: GcodeMetadata | null; mesh_metadata: MeshMetadata | null }
 export type CreateObjectInput = { name: string; folder_id: FolderId | null; notes: string | null; source_url: string | null; author: string | null; license: string | null; stl_paths: string[]; cover_image_path: string | null }
 export type Folder = { id: FolderId; parent_id: FolderId | null; name: string; created_at: number; updated_at: number; deleted_at: number | null }
 export type FolderId = number
 export type FolderImportReport = { object: Object; stl_count: number; gcode_count: number; image_count: number; other_count: number; skipped_count: number }
 export type GcodeMetadata = { asset_id: AssetId; slicer_name: string | null; slicer_version: string | null; profile_name: string | null; layer_height_mm: number | null; nozzle_temp_c: number | null; bed_temp_c: number | null; estimated_time_seconds: number | null; filament_length_mm: number | null; filament_weight_g: number | null; filament_type: string | null; parsed_at: number | null; export_to_usb: boolean }
 export type ImportSource = "thingiverse"
+/**
+ * Computed geometry for a mesh-bearing asset (STL now; OBJ/3MF/SCAD-render later).
+ * Distances are in the file's own units — millimeters for STL/OBJ, whatever
+ * `source_units` declares for 3MF.
+ */
+export type MeshMetadata = { asset_id: AssetId; source_format: string | null; source_units: string | null; triangle_count: number | null; vertex_count: number | null; bbox_x_mm: number | null; bbox_y_mm: number | null; bbox_z_mm: number | null; volume_mm3: number | null; surface_area_mm2: number | null; is_watertight: boolean | null; parsed_at: number | null }
 export type MountedDrive = { mount_path: string; label: string | null; fs_kind: string | null }
 /**
  * Outcome of [`new_project`], surfaced to the frontend so it can tailor the

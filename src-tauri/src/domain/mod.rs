@@ -3,8 +3,8 @@ pub mod folder;
 pub mod gcode_metadata;
 pub mod ids;
 pub mod kinds;
+pub mod mesh_metadata;
 pub mod object;
-pub mod stl_metadata;
 pub mod tag;
 pub mod usb;
 
@@ -13,7 +13,7 @@ pub use folder::*;
 pub use gcode_metadata::*;
 pub use ids::*;
 pub use kinds::*;
+pub use mesh_metadata::*;
 pub use object::*;
-pub use stl_metadata::*;
 pub use tag::*;
 pub use usb::*;

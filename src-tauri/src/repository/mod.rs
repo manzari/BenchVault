@@ -2,6 +2,7 @@ pub mod assets;
 pub mod folders;
 pub mod gcode_metadata;
 pub mod links;
+pub mod mesh_metadata;
 pub mod objects;
 pub mod search;
 pub mod settings;

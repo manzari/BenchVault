@@ -3,6 +3,7 @@ use specta::Type;
 
 use super::asset::Asset;
 use super::gcode_metadata::GcodeMetadata;
+use super::mesh_metadata::MeshMetadata;
 use super::ids::{AssetId, FolderId, ObjectId};
 use super::kinds::ObjectAssetRole;
 use super::tag::Tag;
@@ -39,6 +40,7 @@ pub struct AttachedAsset {
     pub role: ObjectAssetRole,
     pub sort_order: i64,
     pub gcode_metadata: Option<GcodeMetadata>,
+    pub mesh_metadata: Option<MeshMetadata>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]

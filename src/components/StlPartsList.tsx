@@ -15,7 +15,12 @@ import type { AttachedAsset } from "../lib/types";
 import { api } from "../lib/api";
 import { notifyError, withErrorToast } from "../lib/errors";
 import { renderStlToPng } from "../lib/stlRender";
-import { formatBytes } from "../lib/format";
+import {
+  formatBytes,
+  formatDimensions,
+  formatTriangleCount,
+  formatVolume,
+} from "../lib/format";
 import { EmptyState } from "./EmptyState";
 
 interface Props {
@@ -99,18 +104,23 @@ export function StlPartsList({ objectId, parts, onMutated, onCoverChanged }: Pro
           description="Drop an STL, OBJ or STEP file here or use the Add model button."
         />
       ) : (
-        <Table.ScrollContainer minWidth={520}>
+        <Table.ScrollContainer minWidth={680}>
           <Table verticalSpacing="sm" highlightOnHover>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th w={36}>#</Table.Th>
                 <Table.Th>Name</Table.Th>
-                <Table.Th w={120}>Size</Table.Th>
+                <Table.Th w={150}>Dimensions</Table.Th>
+                <Table.Th w={100}>Volume</Table.Th>
+                <Table.Th w={100}>Size</Table.Th>
                 <Table.Th w={110} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {parts.map((p, i) => (
+              {parts.map((p, i) => {
+                const m = p.mesh_metadata;
+                const tris = formatTriangleCount(m?.triangle_count);
+                return (
                 <Table.Tr key={p.asset.id}>
                   <Table.Td>
                     <Text size="sm" c="dimmed" ff="monospace">
@@ -120,6 +130,30 @@ export function StlPartsList({ objectId, parts, onMutated, onCoverChanged }: Pro
                   <Table.Td>
                     <Text size="sm" truncate fw={500}>
                       {p.asset.original_filename}
+                    </Text>
+                    {m && (tris || m.is_watertight != null) && (
+                      <Text size="xs" c="dimmed">
+                        {[
+                          tris && `△ ${tris}`,
+                          m.is_watertight == null
+                            ? null
+                            : m.is_watertight
+                              ? "watertight"
+                              : "not watertight",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </Text>
+                    )}
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm" ff="monospace">
+                      {formatDimensions(m?.bbox_x_mm, m?.bbox_y_mm, m?.bbox_z_mm)}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm" ff="monospace">
+                      {formatVolume(m?.volume_mm3)}
                     </Text>
                   </Table.Td>
                   <Table.Td>
@@ -179,7 +213,8 @@ export function StlPartsList({ objectId, parts, onMutated, onCoverChanged }: Pro
                     </Group>
                   </Table.Td>
                 </Table.Tr>
-              ))}
+                );
+              })}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>

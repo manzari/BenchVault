@@ -5,10 +5,10 @@ use sqlx::SqlitePool;
 
 use crate::db::now_ts;
 use crate::domain::{
-    Asset, AssetId, AssetKind, GcodeMetadata, ObjectAssetRole, ObjectId, ParsedGcode,
+    Asset, AssetId, AssetKind, GcodeMetadata, MeshMetadata, ObjectAssetRole, ObjectId, ParsedGcode,
 };
 use crate::library::{self, Library};
-use crate::parsers::gcode;
+use crate::parsers::{gcode, mesh};
 use crate::repository;
 
 use super::objects as svc_objects;
@@ -29,8 +29,43 @@ pub async fn add_stl(
     let asset = ingest_file(pool, library, object_id, source, kind, mime).await?;
     let next_sort = next_sort_order(pool, object_id, ObjectAssetRole::StlPart).await? as i64;
     repository::objects::attach_asset(pool, object_id, asset.id, ObjectAssetRole::StlPart, next_sort).await?;
+    store_mesh_metadata(pool, asset.id, source, kind).await;
     repository::objects::touch(pool, object_id).await?;
     Ok(asset)
+}
+
+/// Best-effort: compute and store geometry for a mesh asset. Only STL is parsed
+/// today (OBJ/3MF land in later phases); other kinds are skipped. A parse or DB
+/// failure logs and leaves the asset without a `mesh_metadata` sidecar rather
+/// than failing the ingest — mirrors the gcode parser's tolerance.
+async fn store_mesh_metadata(pool: &SqlitePool, asset_id: AssetId, path: &Path, kind: AssetKind) {
+    if !matches!(kind, AssetKind::Stl) {
+        return;
+    }
+    let stats = match mesh::stl::parse_path(path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("[mesh] parse failed for {}: {e}", path.display());
+            return;
+        }
+    };
+    let meta = MeshMetadata {
+        asset_id,
+        source_format: Some("stl".into()),
+        source_units: None,
+        triangle_count: Some(stats.triangle_count),
+        vertex_count: Some(stats.vertex_count),
+        bbox_x_mm: Some(stats.bbox[0]),
+        bbox_y_mm: Some(stats.bbox[1]),
+        bbox_z_mm: Some(stats.bbox[2]),
+        volume_mm3: Some(stats.volume),
+        surface_area_mm2: Some(stats.surface_area),
+        is_watertight: Some(stats.is_watertight),
+        parsed_at: Some(crate::db::now_ts()),
+    };
+    if let Err(e) = repository::mesh_metadata::upsert(pool, &meta).await {
+        eprintln!("[mesh] store failed for {asset_id:?}: {e}");
+    }
 }
 
 /// Copy a CadQuery Python script into the managed library, attaching it with the
@@ -569,6 +604,7 @@ pub async fn attach_existing_stl(
     let asset = attach_existing_inner(pool, library, abs, AssetKind::Stl, mime_for_stl(), None).await?;
     let next_sort = next_sort_order(pool, object_id, ObjectAssetRole::StlPart).await? as i64;
     repository::objects::attach_asset(pool, object_id, asset.id, ObjectAssetRole::StlPart, next_sort).await?;
+    store_mesh_metadata(pool, asset.id, abs, AssetKind::Stl).await;
     repository::objects::touch(pool, object_id).await?;
     Ok(asset)
 }
