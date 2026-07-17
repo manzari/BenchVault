@@ -6,8 +6,6 @@ A cross-platform (Linux-first) desktop app for organizing 3D-printing projects. 
 
 BenchVault owns a managed library on disk (human-readable folder layout), so your files stay plain files you can browse, back up, or take with you.
 
-![BenchVault library dashboard](docs/screenshots/library.png)
-
 ## Workflow
 
 BenchVault sits at the centre of a print project — from CAD source to a printed part — keeping every artifact filed against the Object it belongs to.
