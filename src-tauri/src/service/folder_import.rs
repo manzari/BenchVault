@@ -123,7 +123,7 @@ async fn ingest_folder(
             .map(|s| s.to_ascii_lowercase())
             .unwrap_or_default();
         match ext.as_str() {
-            "stl" | "3mf" | "obj" => match files::add_stl(pool, library, object_id, &path).await {
+            "stl" | "3mf" | "obj" | "step" | "stp" => match files::add_stl(pool, library, object_id, &path).await {
                 Ok(_) => counts.stl += 1,
                 Err(e) => {
                     eprintln!("[folder_import] STL '{}': {e}", path.display());

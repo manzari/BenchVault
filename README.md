@@ -13,7 +13,7 @@ BenchVault sits at the centre of a print project — from CAD source to a printe
 ```mermaid
 flowchart LR
     A["<b>Design</b><br/>OpenSCAD · FreeCAD ·<br/>Blender · any 3D tool"] -->|export STL| B
-    B["<b>BenchVault</b><br/>organize into an Object:<br/>STL parts · .scad sources ·<br/>images · notes · tags"]
+    B["<b>BenchVault</b><br/>organize into an Object:<br/>models · CAD scripts ·<br/>images · docs · tags"]
     B -->|open .scad in GUI /<br/>render preview| A
     B -->|slicer hand-off| C["<b>OrcaSlicer</b><br/>slice → gcode"]
     C -->|auto-ingest gcode<br/>+ parsed metadata| B
@@ -25,7 +25,7 @@ flowchart LR
 ```
 
 1. **Design** a part in OpenSCAD (or FreeCAD, Blender, …) and export an STL — or import one from a URL like Thingiverse.
-2. **Organize** it in BenchVault: STL parts, `.scad` sources, images and notes all live under one Object. Open `.scad` files back in the OpenSCAD GUI or render previews in-app.
+2. **Organize** it in BenchVault: models (STL/OBJ/STEP), CAD scripts (`.scad`, CadQuery `.py`), images, markdown docs and notes all live under one Object. Open `.scad` files back in the OpenSCAD GUI or render previews in-app.
 3. **Slice** by handing an asset straight to OrcaSlicer; the resulting gcode is auto-ingested with its slicer metadata parsed.
 4. **Sync** the gcodes to a mounted USB drive with a manifest.
 5. **Print** — feed the USB stick to the printer.
@@ -33,7 +33,8 @@ flowchart LR
 ## Features
 
 - **Library organization** — nested folders, objects with cover images, tags, manual sort order, breadcrumb navigation.
-- **STL preview** — interactive three.js viewer; snapshot any angle as the object's cover image.
+- **3D preview** — interactive three.js viewer for STL and OBJ; snapshot any angle as the object's cover image.
+- **Docs & CAD scripts** — keep markdown notes (rendered as GitHub-flavored markdown) and CadQuery/OpenSCAD scripts filed alongside the part.
 - **Gcode metadata** — slicer, profile, print time, filament usage parsed on import. Supports the PrusaSlicer family (PrusaSlicer, SuperSlicer, OrcaSlicer, BambuStudio) and Cura.
 - **OpenSCAD support** — open `.scad` sources in the OpenSCAD GUI, or render previews via the OpenSCAD CLI (cached on disk) right in the app.
 - **Slicer hand-off** — open assets directly in OrcaSlicer.
@@ -49,18 +50,23 @@ Everything you import is stored as a plain file in the managed library. The tabl
 | Format | Stored | Metadata | 3D preview | Render | Slicer hand-off |
 |---|:---:|:---:|:---:|:---:|:---:|
 | **STL** (`.stl`) | ✅ | — | ✅ | — | ✅ |
+| **OBJ** (`.obj`) | ✅ | — | ✅ | — | — |
 | **G-code** (`.gcode`, `.gco`, `.g`) | ✅ | ✅ rich¹ | — | — | — |
 | G-code binary (`.bgcode`) | ✅ | —² | — | — | — |
 | **OpenSCAD** (`.scad`) | ✅ | — | ✅ via render | ✅ | — |
-| 3MF / OBJ (`.3mf`, `.obj`) | ✅ | — | — | — | — |
+| **CadQuery** (`.py`) | ✅³ | — | — | — | — |
+| **Markdown** (`.md`, `.markdown`) | ✅ | — | rendered⁴ | — | — |
+| 3MF (`.3mf`) | ✅ | — | — | — | — |
+| CAD / STEP (`.step`, `.stp`, `.iges`, `.igs`, `.f3d`, `.sldprt`) | ✅ | — | — | — | — |
 | Images (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.bmp`, `.svg`) | ✅ | — | — | — | — |
-| CAD (`.step`, `.stp`, `.iges`, `.igs`, `.f3d`, `.sldprt`) | ✅ | — | — | — | — |
-| Anything else (`.pdf`, `.txt`, `.md`, `.zip`, …) | ✅ | — | — | — | — |
+| Anything else (`.pdf`, `.txt`, `.zip`, …) | ✅ | — | — | — | — |
 
-Images double as object cover art (snapshot the STL viewer, or set any imported image). STL parts are the only assets sent to OrcaSlicer, and OpenSCAD is the only source that renders to a previewable mesh in-app.
+Models (STL/OBJ/STEP/3MF) share one **Models** section; STL and OBJ render directly in the in-app 3D viewer, while STEP/3MF are stored and listed. OpenSCAD and CadQuery scripts share a **CAD Scripts** section (OpenSCAD sources also render to a previewable mesh). Markdown files render as formatted notes in a **Docs / Notes** section. Images double as object cover art (snapshot the 3D viewer, or set any imported image). STL parts are the only assets sent to OrcaSlicer.
 
 ¹ Slicer, profile, print time, filament length/weight/type, layer height, and nozzle/bed temps are parsed on import — for the PrusaSlicer family (PrusaSlicer, SuperSlicer, OrcaSlicer, BambuStudio) and Cura. Other slicers are stored without parsed metadata.
 ² `.bgcode` is accepted but its binary payload isn't parsed yet.
+³ A `.py` file is filed as a CadQuery script only when it imports `cadquery`; other Python files are stored as generic attachments.
+⁴ Rendered as formatted markdown (GitHub-flavored) in the object's Docs / Notes section, not in the 3D viewer.
 
 ## Stack
 

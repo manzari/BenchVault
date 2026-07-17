@@ -29,6 +29,26 @@ pub async fn add_scad(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn add_cadquery(
+    state: State<'_, AppState>,
+    object_id: ObjectId,
+    source_path: String,
+) -> Result<Asset, AppError> {
+    Ok(service::files::add_cadquery(&state.db, &state.library, object_id, Path::new(&source_path)).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn add_doc(
+    state: State<'_, AppState>,
+    object_id: ObjectId,
+    source_path: String,
+) -> Result<Asset, AppError> {
+    Ok(service::files::add_doc(&state.db, &state.library, object_id, Path::new(&source_path)).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn add_gcode(
     state: State<'_, AppState>,
     object_id: ObjectId,

@@ -39,6 +39,7 @@ import type { ObjectFull } from "../lib/types";
 import { StlViewer } from "../components/StlViewer";
 import { StlPartsList } from "../components/StlPartsList";
 import { ScadList } from "../components/ScadList";
+import { MarkdownDocs } from "../components/MarkdownDocs";
 import { GcodeList } from "../components/GcodeList";
 import { AttachmentStrip } from "../components/AttachmentStrip";
 import { TagInput, TagBadges } from "../components/TagInput";
@@ -46,7 +47,7 @@ import { EditableText, EditableTextarea } from "../components/Editable";
 import { EmptyState } from "../components/EmptyState";
 import { useLibraryStore } from "../lib/stores/library";
 
-const MODEL_EXTS = ["stl", "3mf", "obj"];
+const MODEL_EXTS = ["stl", "3mf", "obj", "step", "stp"];
 
 export function ObjectDetailPage() {
   const { objectId } = useParams({ from: "/objects/$objectId" });
@@ -148,13 +149,14 @@ export function ObjectDetailPage() {
   const stls = data.assets.filter((a) => a.role === "stl_part");
   const gcodes = data.assets.filter((a) => a.role === "gcode");
   const scads = data.assets.filter((a) => a.role === "scad");
-  // The 3D preview uses three.js STLLoader, which only parses STL. Other model
-  // files sharing the stl_part role (.3mf, .obj) would fail to parse and blank
-  // the canvas, so keep them out of the viewer — they still show in the parts
-  // list below.
-  const previewableStls = stls.filter((a) =>
-    a.asset.original_filename.toLowerCase().endsWith(".stl"),
-  );
+  const docs = data.assets.filter((a) => a.role === "document");
+  // The 3D viewer parses STL (STLLoader) and OBJ (OBJLoader). Other model files
+  // sharing the stl_part role (.3mf, .step) have no in-app loader, so keep them
+  // out of the viewer — they still show in the parts list below.
+  const previewableStls = stls.filter((a) => {
+    const n = a.asset.original_filename.toLowerCase();
+    return n.endsWith(".stl") || n.endsWith(".obj");
+  });
   // SCAD entries render to STL on demand via `render_scad_preview`, so they can
   // ride in the same viewer alongside real STL parts.
   const previewParts = [...previewableStls, ...scads];
@@ -198,8 +200,8 @@ export function ObjectDetailPage() {
     const paths = Array.isArray(sel) ? sel : [sel];
     let added = 0;
     for (const p of paths) {
-      // .scad sources get their own asset kind; other non-model picks (via "All
-      // files") land as attachments.
+      // Route each pick to its proper section by extension; other picks (via
+      // "All files") land as attachments (which itself sniffs cadquery .py).
       const lower = p.toLowerCase();
       const isModel = MODEL_EXTS.some((ext) => lower.endsWith(`.${ext}`));
       const ok = await withErrorToast(`Failed to add ${p}`, () =>
@@ -207,7 +209,11 @@ export function ObjectDetailPage() {
           ? api.addStl(id, p)
           : lower.endsWith(".scad")
             ? api.addScad(id, p)
-            : api.addAttachment(id, p),
+            : lower.endsWith(".py")
+              ? api.addCadquery(id, p)
+              : lower.endsWith(".md") || lower.endsWith(".markdown")
+                ? api.addDoc(id, p)
+                : api.addAttachment(id, p),
       );
       if (ok.ok) added += 1;
     }
@@ -537,7 +543,7 @@ export function ObjectDetailPage() {
         <StlPartsList objectId={id} parts={stls} onMutated={load} onCoverChanged={refreshAfterCover} />
       </Paper>
 
-      {/* OpenSCAD list (only when present) */}
+      {/* CAD Scripts list (.scad + cadquery .py; only when present) */}
       {scads.length > 0 && (
         <Paper withBorder p="md">
           <ScadList
@@ -554,6 +560,13 @@ export function ObjectDetailPage() {
       <Paper withBorder p="md">
         <GcodeList objectId={id} gcodes={gcodes} onMutated={load} />
       </Paper>
+
+      {/* Docs / Notes (rendered markdown; only when present) */}
+      {docs.length > 0 && (
+        <Paper withBorder p="md">
+          <MarkdownDocs objectId={id} docs={docs} onMutated={load} />
+        </Paper>
+      )}
 
       {/* Attachments: images strip + files list */}
       <Paper withBorder p="md">

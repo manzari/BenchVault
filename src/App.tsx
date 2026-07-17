@@ -245,8 +245,12 @@ export function App({ children }: { children: React.ReactNode }) {
       }
 
       const dirs: string[] = [];
-      const stls: string[] = [];
+      const stls: string[] = []; // 3D models (stl/obj/step/3mf) → Models section
       const gcodes: string[] = [];
+      // Everything else (.scad, cadquery .py, .md, images, …) → add_attachment,
+      // which self-routes each to its proper section.
+      const others: string[] = [];
+      const MODEL_EXTS = [".stl", ".obj", ".step", ".stp", ".3mf"];
       event.payload.paths.forEach((p, i) => {
         if (kinds[i] === "dir") {
           dirs.push(p);
@@ -254,10 +258,11 @@ export function App({ children }: { children: React.ReactNode }) {
         }
         if (kinds[i] === "missing") return;
         const lower = p.toLowerCase();
-        if (lower.endsWith(".stl")) stls.push(p);
+        if (MODEL_EXTS.some((e) => lower.endsWith(e))) stls.push(p);
         else if (lower.endsWith(".gcode") || lower.endsWith(".gco") || lower.endsWith(".g")) gcodes.push(p);
+        else others.push(p);
       });
-      if (dirs.length === 0 && stls.length === 0 && gcodes.length === 0) return;
+      if (dirs.length === 0 && stls.length === 0 && gcodes.length === 0 && others.length === 0) return;
 
       const dpr = window.devicePixelRatio || 1;
       const x = event.payload.position.x / dpr;
@@ -270,6 +275,7 @@ export function App({ children }: { children: React.ReactNode }) {
         const objectId = Number(objectEl.getAttribute("data-drop-object-id"));
         let addedStl = 0;
         let addedGcode = 0;
+        let addedOther = 0;
         let addedFromDirs = 0;
         for (const path of stls) {
           try {
@@ -295,6 +301,18 @@ export function App({ children }: { children: React.ReactNode }) {
             });
           }
         }
+        for (const path of others) {
+          try {
+            await api.addAttachment(objectId, path);
+            addedOther += 1;
+          } catch (e) {
+            notifications.show({
+              color: "red",
+              title: "Failed to add file",
+              message: `${basename(path)}: ${String(e)}`,
+            });
+          }
+        }
         for (const path of dirs) {
           try {
             const r = await api.importFolderIntoObject(objectId, path);
@@ -307,13 +325,14 @@ export function App({ children }: { children: React.ReactNode }) {
             });
           }
         }
-        if (addedStl + addedGcode + addedFromDirs > 0) {
+        if (addedStl + addedGcode + addedOther + addedFromDirs > 0) {
           window.dispatchEvent(new CustomEvent("gcf:object-mutated", { detail: { id: objectId } }));
           await refreshAllObjects();
           await refreshObjects();
           const parts: string[] = [];
-          if (addedStl > 0) parts.push(`${addedStl} STL part${addedStl === 1 ? "" : "s"}`);
+          if (addedStl > 0) parts.push(`${addedStl} model${addedStl === 1 ? "" : "s"}`);
           if (addedGcode > 0) parts.push(`${addedGcode} GCode file${addedGcode === 1 ? "" : "s"}`);
+          if (addedOther > 0) parts.push(`${addedOther} file${addedOther === 1 ? "" : "s"}`);
           if (addedFromDirs > 0) parts.push(`${addedFromDirs} file${addedFromDirs === 1 ? "" : "s"} from folder`);
           notifications.show({
             color: "green",
