@@ -1,2 +1,2 @@
 pub mod gcode;
-pub mod stl;
+pub mod mesh;

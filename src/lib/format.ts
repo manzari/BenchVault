@@ -44,6 +44,32 @@ export function formatFilament(
   return haveW ? formatGrams(weightGrams) : formatLengthMm(lengthMm);
 }
 
+/** Bounding-box size as "X × Y × Z mm", or "—" when any dimension is missing. */
+export function formatDimensions(
+  x: number | null | undefined,
+  y: number | null | undefined,
+  z: number | null | undefined,
+): string {
+  if (x == null || y == null || z == null) return "—";
+  const n = (v: number) => (v >= 100 ? v.toFixed(0) : v.toFixed(1));
+  return `${n(x)} × ${n(y)} × ${n(z)} mm`;
+}
+
+/** Mesh volume: cm³ once past 1 cm³, mm³ below. */
+export function formatVolume(mm3: number | null | undefined): string {
+  if (mm3 == null) return "—";
+  if (mm3 >= 1000) return `${(mm3 / 1000).toFixed(1)} cm³`;
+  return `${mm3.toFixed(0)} mm³`;
+}
+
+/** Compact triangle count, e.g. "12k" or "1.2k" or "840". Null when unknown. */
+export function formatTriangleCount(n: number | null | undefined): string | null {
+  if (n == null) return null;
+  if (n >= 10000) return `${Math.round(n / 1000)}k`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return `${n}`;
+}
+
 /** Mantine color name for a slicer name. Falls back to gray. */
 export function slicerColor(name: string | null | undefined): string {
   if (!name) return "gray";

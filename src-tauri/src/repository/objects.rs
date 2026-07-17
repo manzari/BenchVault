@@ -4,8 +4,8 @@ use sqlx::{Row, SqlitePool};
 
 use crate::db::now_ts;
 use crate::domain::{
-    Asset, AssetId, AssetKind, AttachedAsset, FolderId, GcodeMetadata, Object, ObjectAssetRole,
-    ObjectFull, ObjectId, ObjectSummary, Tag, TagId, UpdateObjectPatch,
+    Asset, AssetId, AssetKind, AttachedAsset, FolderId, GcodeMetadata, MeshMetadata, Object,
+    ObjectAssetRole, ObjectFull, ObjectId, ObjectSummary, Tag, TagId, UpdateObjectPatch,
 };
 
 fn map_object(r: sqlx::sqlite::SqliteRow) -> Object {
@@ -206,10 +206,16 @@ pub async fn get_full(pool: &SqlitePool, id: ObjectId) -> sqlx::Result<ObjectFul
                 gm.slicer_name, gm.slicer_version, gm.profile_name, gm.layer_height_mm,
                 gm.nozzle_temp_c, gm.bed_temp_c, gm.estimated_time_seconds,
                 gm.filament_length_mm, gm.filament_weight_g, gm.filament_type, gm.parsed_at,
-                gm.export_to_usb
+                gm.export_to_usb,
+                mm.source_format AS mesh_source_format, mm.source_units AS mesh_source_units,
+                mm.triangle_count AS mesh_triangle_count, mm.vertex_count AS mesh_vertex_count,
+                mm.bbox_x_mm AS mesh_bbox_x, mm.bbox_y_mm AS mesh_bbox_y, mm.bbox_z_mm AS mesh_bbox_z,
+                mm.volume_mm3 AS mesh_volume, mm.surface_area_mm2 AS mesh_area,
+                mm.is_watertight AS mesh_watertight, mm.parsed_at AS mesh_parsed_at
          FROM object_assets oa
          JOIN assets a ON a.id = oa.asset_id
          LEFT JOIN gcode_metadata gm ON gm.asset_id = a.id
+         LEFT JOIN mesh_metadata mm ON mm.asset_id = a.id
          WHERE oa.object_id = ?
          ORDER BY oa.role, oa.sort_order, a.id",
     )
@@ -259,11 +265,34 @@ pub async fn get_full(pool: &SqlitePool, id: ObjectId) -> sqlx::Result<ObjectFul
         } else {
             None
         };
+        let mesh = if r.try_get::<Option<i64>, _>("mesh_parsed_at").ok().flatten().is_some() {
+            Some(MeshMetadata {
+                asset_id: asset.id,
+                source_format: r.try_get("mesh_source_format").ok(),
+                source_units: r.try_get("mesh_source_units").ok(),
+                triangle_count: r.try_get("mesh_triangle_count").ok(),
+                vertex_count: r.try_get("mesh_vertex_count").ok(),
+                bbox_x_mm: r.try_get("mesh_bbox_x").ok(),
+                bbox_y_mm: r.try_get("mesh_bbox_y").ok(),
+                bbox_z_mm: r.try_get("mesh_bbox_z").ok(),
+                volume_mm3: r.try_get("mesh_volume").ok(),
+                surface_area_mm2: r.try_get("mesh_area").ok(),
+                is_watertight: r
+                    .try_get::<Option<i64>, _>("mesh_watertight")
+                    .ok()
+                    .flatten()
+                    .map(|v| v != 0),
+                parsed_at: r.try_get("mesh_parsed_at").ok(),
+            })
+        } else {
+            None
+        };
         assets.push(AttachedAsset {
             asset,
             role,
             sort_order: r.get("oa_sort"),
             gcode_metadata: gm,
+            mesh_metadata: mesh,
         });
     }
 
