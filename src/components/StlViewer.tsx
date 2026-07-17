@@ -5,6 +5,8 @@ import type { MutableRefObject } from "react";
 import { notifications } from "@mantine/notifications";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import {
   ActionIcon,
   Collapse,
@@ -65,6 +67,26 @@ interface CachedPart {
   id: number;
   name: string;
   geometry: THREE.BufferGeometry;
+}
+
+// OBJLoader yields a Group of meshes; flatten it to a single positioned
+// BufferGeometry so it renders through the same single-mesh path as STL.
+function objTextToGeometry(text: string): THREE.BufferGeometry {
+  const group = new OBJLoader().parse(text);
+  group.updateMatrixWorld(true);
+  const geoms: THREE.BufferGeometry[] = [];
+  group.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.geometry) return;
+    let g = (mesh.geometry as THREE.BufferGeometry).clone();
+    g.applyMatrix4(mesh.matrixWorld);
+    if (g.index) g = g.toNonIndexed();
+    const only = new THREE.BufferGeometry();
+    only.setAttribute("position", g.getAttribute("position"));
+    geoms.push(only);
+  });
+  if (geoms.length === 0) throw new Error("OBJ contained no mesh geometry");
+  return geoms.length === 1 ? geoms[0] : mergeGeometries(geoms, false) ?? geoms[0];
 }
 
 function formatBytes(n: number): string {
@@ -133,6 +155,7 @@ export function StlViewer({ parts, objectId, onCoverChanged, previewRequest }: P
     const target = parts.find((p) => p.asset.id === selectedId);
     if (!target) { setLoading(false); return; }
     const isScad = target.asset.kind === "scad";
+    const isObj = target.asset.kind === "obj";
     // Refuse oversized meshes up front — loading them into WebGL OOMs the webview.
     // A .scad's on-disk size is the tiny source, so we can't guard until after
     // the render; that check happens below on the returned bytes.
@@ -162,8 +185,9 @@ export function StlViewer({ parts, objectId, onCoverChanged, previewRequest }: P
           setOversized((prev) => new Set(prev).add(selectedId));
           return;
         }
-        const buf = new Uint8Array(bytes).buffer;
-        const geom = new STLLoader().parse(buf);
+        const geom = isObj
+          ? objTextToGeometry(new TextDecoder().decode(new Uint8Array(bytes)))
+          : new STLLoader().parse(new Uint8Array(bytes).buffer);
         geom.computeBoundingBox();
         geom.computeVertexNormals();
         if (cancelled) {

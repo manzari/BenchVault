@@ -54,6 +54,10 @@ export const api = {
     invoke<Asset>("add_stl", { objectId: object_id, sourcePath: source_path }),
   addScad: (object_id: number, source_path: string) =>
     invoke<Asset>("add_scad", { objectId: object_id, sourcePath: source_path }),
+  addCadquery: (object_id: number, source_path: string) =>
+    invoke<Asset>("add_cadquery", { objectId: object_id, sourcePath: source_path }),
+  addDoc: (object_id: number, source_path: string) =>
+    invoke<Asset>("add_doc", { objectId: object_id, sourcePath: source_path }),
   addGcode: (object_id: number, source_path: string) =>
     invoke<[Asset, GcodeMetadata]>("add_gcode", { objectId: object_id, sourcePath: source_path }),
   removeAsset: (id: number) => invoke<void>("remove_asset", { id }),

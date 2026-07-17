@@ -127,6 +127,22 @@ async addScad(objectId: ObjectId, sourcePath: string) : Promise<Result<Asset, Ap
     else return { status: "error", error: e  as any };
 }
 },
+async addCadquery(objectId: ObjectId, sourcePath: string) : Promise<Result<Asset, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("add_cadquery", { objectId, sourcePath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async addDoc(objectId: ObjectId, sourcePath: string) : Promise<Result<Asset, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("add_doc", { objectId, sourcePath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async addGcode(objectId: ObjectId, sourcePath: string) : Promise<Result<[Asset, GcodeMetadata], AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("add_gcode", { objectId, sourcePath }) };
@@ -547,7 +563,7 @@ async renderScadPreview(assetId: AssetId) : Promise<Result<number[], AppError>> 
 export type AppError = { code: string; message: string }
 export type Asset = { id: AssetId; kind: AssetKind; relative_path: string; original_filename: string; mime_type: string | null; size_bytes: number | null; sha256: string | null; metadata_json: string | null; created_at: number; updated_at: number; deleted_at: number | null }
 export type AssetId = number
-export type AssetKind = "stl" | "gcode" | "image" | "cad" | "scad" | "other"
+export type AssetKind = "stl" | "gcode" | "image" | "cad" | "scad" | "obj" | "step" | "cadquery" | "markdown" | "other"
 /**
  * An asset attached to an object plus role + sort info plus type-specific metadata.
  */
@@ -582,7 +598,7 @@ export type Object = { id: ObjectId; folder_id: FolderId | null; name: string; n
 /**
  * Role of an asset within an object.
  */
-export type ObjectAssetRole = "stl_part" | "gcode" | "scad" | "attachment"
+export type ObjectAssetRole = "stl_part" | "gcode" | "scad" | "document" | "attachment"
 export type ObjectFull = { object: Object; assets: AttachedAsset[]; tags: Tag[]; 
 /**
  * The object's "main" `.3mf` project: the user's explicit pick if set,

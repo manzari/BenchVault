@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Badge,
   Button,
   Group,
   Stack,
@@ -57,12 +58,12 @@ export function ScadList({ objectId, scads, onMutated, onCoverChanged, onPreview
 
   const hasOpenscad = openscadAvailable !== false;
 
-  const addScad = async () => {
+  const addScript = async () => {
     let selected: string | string[] | null;
     try {
       selected = await open({
         multiple: true,
-        filters: [{ name: "OpenSCAD", extensions: ["scad"] }],
+        filters: [{ name: "CAD scripts", extensions: ["scad", "py"] }],
       });
     } catch (e) {
       notifyError("Could not open file picker", e);
@@ -72,8 +73,11 @@ export function ScadList({ objectId, scads, onMutated, onCoverChanged, onPreview
     const paths = Array.isArray(selected) ? selected : [selected];
     let added = 0;
     for (const p of paths) {
+      // .py is routed through add_attachment, which sniffs it and only files it
+      // as a CadQuery script when it actually imports cadquery.
+      const isPy = p.toLowerCase().endsWith(".py");
       const ok = await withErrorToast(`Failed to add ${baseName(p)}`, () =>
-        api.addScad(objectId, p),
+        isPy ? api.addCadquery(objectId, p) : api.addScad(objectId, p),
       );
       if (ok.ok) added += 1;
     }
@@ -105,13 +109,13 @@ export function ScadList({ objectId, scads, onMutated, onCoverChanged, onPreview
     <Stack gap="sm">
       <Group justify="space-between" align="center">
         <Title order={4}>
-          OpenSCAD{" "}
+          CAD Scripts{" "}
           <Text component="span" c="dimmed" fw={500} size="sm">
             · {scads.length}
           </Text>
         </Title>
-        <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={addScad}>
-          Add SCAD
+        <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={addScript}>
+          Add script
         </Button>
       </Group>
 
@@ -119,8 +123,8 @@ export function ScadList({ objectId, scads, onMutated, onCoverChanged, onPreview
         <EmptyState
           bare
           icon={<IconFileCode size={28} />}
-          title="No OpenSCAD files yet"
-          description="Drop a .scad file onto this object, or use the Add SCAD button."
+          title="No CAD scripts yet"
+          description="Drop a .scad or a CadQuery .py file onto this object, or use the Add script button."
         />
       ) : (
         <Table.ScrollContainer minWidth={520}>
@@ -142,9 +146,14 @@ export function ScadList({ objectId, scads, onMutated, onCoverChanged, onPreview
                     </Text>
                   </Table.Td>
                   <Table.Td>
-                    <Text size="sm" truncate fw={500}>
-                      {p.asset.original_filename}
-                    </Text>
+                    <Group gap={6} wrap="nowrap">
+                      <Text size="sm" truncate fw={500}>
+                        {p.asset.original_filename}
+                      </Text>
+                      <Badge size="xs" variant="light" color={p.asset.kind === "cadquery" ? "teal" : "grape"}>
+                        {p.asset.kind === "cadquery" ? "CadQuery" : "OpenSCAD"}
+                      </Badge>
+                    </Group>
                   </Table.Td>
                   <Table.Td>
                     <Text size="sm" ff="monospace">
@@ -153,44 +162,48 @@ export function ScadList({ objectId, scads, onMutated, onCoverChanged, onPreview
                   </Table.Td>
                   <Table.Td>
                     <Group gap={4} wrap="nowrap" justify="flex-end">
-                      <Tooltip label={hasOpenscad ? "Preview render" : noOpenscad}>
-                        <ActionIcon
-                          variant="subtle"
-                          size="sm"
-                          aria-label="Preview render"
-                          disabled={!hasOpenscad}
-                          onClick={() => onPreview(p.asset)}
-                        >
-                          <IconEye size={14} />
-                        </ActionIcon>
-                      </Tooltip>
-                      <Tooltip label={hasOpenscad ? "Open in OpenSCAD" : noOpenscad}>
-                        <ActionIcon
-                          variant="subtle"
-                          color="grape"
-                          size="sm"
-                          aria-label="Open in OpenSCAD"
-                          disabled={!hasOpenscad}
-                          onClick={() =>
-                            withErrorToast("Could not open in OpenSCAD", () =>
-                              api.openAssetInOpenscad(p.asset.id),
-                            )
-                          }
-                        >
-                          <IconPencil size={14} />
-                        </ActionIcon>
-                      </Tooltip>
-                      <Tooltip label={hasOpenscad ? "Make cover from render" : noOpenscad}>
-                        <ActionIcon
-                          variant="subtle"
-                          size="sm"
-                          aria-label="Make cover from render"
-                          disabled={!hasOpenscad}
-                          onClick={() => makeCover(p)}
-                        >
-                          <IconPhoto size={14} />
-                        </ActionIcon>
-                      </Tooltip>
+                      {p.asset.kind === "scad" && (
+                        <>
+                          <Tooltip label={hasOpenscad ? "Preview render" : noOpenscad}>
+                            <ActionIcon
+                              variant="subtle"
+                              size="sm"
+                              aria-label="Preview render"
+                              disabled={!hasOpenscad}
+                              onClick={() => onPreview(p.asset)}
+                            >
+                              <IconEye size={14} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label={hasOpenscad ? "Open in OpenSCAD" : noOpenscad}>
+                            <ActionIcon
+                              variant="subtle"
+                              color="grape"
+                              size="sm"
+                              aria-label="Open in OpenSCAD"
+                              disabled={!hasOpenscad}
+                              onClick={() =>
+                                withErrorToast("Could not open in OpenSCAD", () =>
+                                  api.openAssetInOpenscad(p.asset.id),
+                                )
+                              }
+                            >
+                              <IconPencil size={14} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label={hasOpenscad ? "Make cover from render" : noOpenscad}>
+                            <ActionIcon
+                              variant="subtle"
+                              size="sm"
+                              aria-label="Make cover from render"
+                              disabled={!hasOpenscad}
+                              onClick={() => makeCover(p)}
+                            >
+                              <IconPhoto size={14} />
+                            </ActionIcon>
+                          </Tooltip>
+                        </>
+                      )}
                       <Tooltip label="Remove">
                         <ActionIcon
                           variant="subtle"
@@ -198,7 +211,7 @@ export function ScadList({ objectId, scads, onMutated, onCoverChanged, onPreview
                           size="sm"
                           aria-label="Remove"
                           onClick={async () => {
-                            if (!(await ask(`Remove ${p.asset.original_filename}?`, { title: "Remove SCAD", kind: "warning" }))) return;
+                            if (!(await ask(`Remove ${p.asset.original_filename}?`, { title: "Remove script", kind: "warning" }))) return;
                             const ok = await withErrorToast(
                               `Failed to remove ${p.asset.original_filename}`,
                               () => api.removeAsset(p.asset.id),

@@ -43,7 +43,7 @@ export function StlPartsList({ objectId, parts, onMutated, onCoverChanged }: Pro
   };
 
   const addStl = async () => {
-    const modelExts = ["stl", "3mf", "obj"];
+    const modelExts = ["stl", "3mf", "obj", "step", "stp"];
     let selected: string | string[] | null;
     try {
       selected = await openDialog({
@@ -81,13 +81,13 @@ export function StlPartsList({ objectId, parts, onMutated, onCoverChanged }: Pro
     <Stack gap="sm">
       <Group justify="space-between" align="center">
         <Title order={4}>
-          STL parts{" "}
+          Models{" "}
           <Text component="span" c="dimmed" fw={500} size="sm">
             · {parts.length}
           </Text>
         </Title>
         <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={addStl}>
-          Add STL
+          Add model
         </Button>
       </Group>
 
@@ -95,8 +95,8 @@ export function StlPartsList({ objectId, parts, onMutated, onCoverChanged }: Pro
         <EmptyState
           bare
           icon={<IconCube size={28} />}
-          title="No STL parts yet"
-          description="Drop an STL file here or use the Add STL button."
+          title="No models yet"
+          description="Drop an STL, OBJ or STEP file here or use the Add model button."
         />
       ) : (
         <Table.ScrollContainer minWidth={520}>
@@ -146,16 +146,18 @@ export function StlPartsList({ objectId, parts, onMutated, onCoverChanged }: Pro
                           </ActionIcon>
                         </Tooltip>
                       )}
-                      <Tooltip label="Make cover from render">
-                        <ActionIcon
-                          variant="subtle"
-                          size="sm"
-                          aria-label="Make cover from render"
-                          onClick={() => setCoverFromPart(p)}
-                        >
-                          <IconPhoto size={14} />
-                        </ActionIcon>
-                      </Tooltip>
+                      {p.asset.original_filename.toLowerCase().endsWith(".stl") && (
+                        <Tooltip label="Make cover from render">
+                          <ActionIcon
+                            variant="subtle"
+                            size="sm"
+                            aria-label="Make cover from render"
+                            onClick={() => setCoverFromPart(p)}
+                          >
+                            <IconPhoto size={14} />
+                          </ActionIcon>
+                        </Tooltip>
+                      )}
                       <Tooltip label="Remove">
                         <ActionIcon
                           variant="subtle"

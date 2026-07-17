@@ -9,6 +9,13 @@ pub enum AssetKind {
     Image,
     Cad,
     Scad,
+    Obj,
+    Step,
+    // Keep the wire/DB string as one word ("cadquery"), not snake_case's
+    // "cad_query", so serde output matches `as_str`/`from_str` and the stored value.
+    #[serde(rename = "cadquery")]
+    CadQuery,
+    Markdown,
     Other,
 }
 
@@ -20,6 +27,10 @@ impl AssetKind {
             AssetKind::Image => "image",
             AssetKind::Cad => "cad",
             AssetKind::Scad => "scad",
+            AssetKind::Obj => "obj",
+            AssetKind::Step => "step",
+            AssetKind::CadQuery => "cadquery",
+            AssetKind::Markdown => "markdown",
             AssetKind::Other => "other",
         }
     }
@@ -31,6 +42,10 @@ impl AssetKind {
             "image" => AssetKind::Image,
             "cad" => AssetKind::Cad,
             "scad" => AssetKind::Scad,
+            "obj" => AssetKind::Obj,
+            "step" => AssetKind::Step,
+            "cadquery" => AssetKind::CadQuery,
+            "markdown" => AssetKind::Markdown,
             _ => AssetKind::Other,
         }
     }
@@ -63,6 +78,7 @@ pub enum ObjectAssetRole {
     StlPart,
     Gcode,
     Scad,
+    Document,
     Attachment,
 }
 
@@ -72,6 +88,7 @@ impl ObjectAssetRole {
             ObjectAssetRole::StlPart => "stl_part",
             ObjectAssetRole::Gcode => "gcode",
             ObjectAssetRole::Scad => "scad",
+            ObjectAssetRole::Document => "document",
             ObjectAssetRole::Attachment => "attachment",
         }
     }

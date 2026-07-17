@@ -40,6 +40,8 @@ pub fn build_specta_builder() -> SpectaBuilder<tauri::Wry> {
         // files
         commands::files::add_stl,
         commands::files::add_scad,
+        commands::files::add_cadquery,
+        commands::files::add_doc,
         commands::files::add_gcode,
         commands::files::add_attachment,
         commands::files::remove_asset,

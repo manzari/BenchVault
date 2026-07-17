@@ -437,10 +437,17 @@ fn classify(abs: &Path) -> Option<(AssetKind, ObjectAssetRole)> {
         Some("gcode") | Some("bgcode") | Some("gco") | Some("g") => {
             Some((AssetKind::Gcode, ObjectAssetRole::Gcode))
         }
-        Some("stl") | Some("obj") => Some((AssetKind::Stl, ObjectAssetRole::StlPart)),
+        Some("stl") => Some((AssetKind::Stl, ObjectAssetRole::StlPart)),
+        Some("obj") => Some((AssetKind::Obj, ObjectAssetRole::StlPart)),
+        Some("step") | Some("stp") => Some((AssetKind::Step, ObjectAssetRole::StlPart)),
         Some("scad") => Some((AssetKind::Scad, ObjectAssetRole::Scad)),
-        Some("3mf") | Some("step") | Some("stp") | Some("iges") | Some("igs")
-        | Some("f3d") | Some("sldprt") => {
+        // A `.py` is only auto-ingested when it sniffs as a CadQuery script;
+        // unrelated Python is ignored by the watcher.
+        Some("py") if crate::service::files::is_cadquery_py(abs) => {
+            Some((AssetKind::CadQuery, ObjectAssetRole::Scad))
+        }
+        Some("md") | Some("markdown") => Some((AssetKind::Markdown, ObjectAssetRole::Document)),
+        Some("3mf") | Some("iges") | Some("igs") | Some("f3d") | Some("sldprt") => {
             Some((AssetKind::Cad, ObjectAssetRole::Attachment))
         }
         Some("png") | Some("jpg") | Some("jpeg") | Some("webp") | Some("gif") | Some("bmp") => {

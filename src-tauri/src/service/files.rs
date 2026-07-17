@@ -14,16 +14,54 @@ use crate::repository;
 use super::objects as svc_objects;
 use super::{ServiceError, ServiceResult};
 
-/// Copy `source` into the managed library and create matching DB rows.
+/// Copy a 3D model (`.stl`, `.obj`, `.step`, `.3mf`, …) into the managed library
+/// and create matching DB rows. All model files share the `StlPart` role (one
+/// "Models" section) but carry a per-format [`AssetKind`] so the frontend can pick
+/// the right preview path (only STL/OBJ render in-app).
 pub async fn add_stl(
     pool: &SqlitePool,
     library: &Library,
     object_id: ObjectId,
     source: &Path,
 ) -> ServiceResult<Asset> {
-    let asset = ingest_file(pool, library, object_id, source, AssetKind::Stl, mime_for_stl()).await?;
+    let kind = classify_model_kind(source);
+    let mime = mime_for_path(source).or_else(|| mime_for_stl());
+    let asset = ingest_file(pool, library, object_id, source, kind, mime).await?;
     let next_sort = next_sort_order(pool, object_id, ObjectAssetRole::StlPart).await? as i64;
     repository::objects::attach_asset(pool, object_id, asset.id, ObjectAssetRole::StlPart, next_sort).await?;
+    repository::objects::touch(pool, object_id).await?;
+    Ok(asset)
+}
+
+/// Copy a CadQuery Python script into the managed library, attaching it with the
+/// `scad` role so it shares the "CAD Scripts" section with OpenSCAD sources
+/// (mirrors [`add_scad`]).
+pub async fn add_cadquery(
+    pool: &SqlitePool,
+    library: &Library,
+    object_id: ObjectId,
+    source: &Path,
+) -> ServiceResult<Asset> {
+    let asset =
+        ingest_file(pool, library, object_id, source, AssetKind::CadQuery, mime_for_path(source)).await?;
+    let next_sort = next_sort_order(pool, object_id, ObjectAssetRole::Scad).await? as i64;
+    repository::objects::attach_asset(pool, object_id, asset.id, ObjectAssetRole::Scad, next_sort).await?;
+    repository::objects::touch(pool, object_id).await?;
+    Ok(asset)
+}
+
+/// Copy a Markdown document into the managed library, attaching it with the
+/// `document` role so it renders in the object's "Docs / Notes" section.
+pub async fn add_doc(
+    pool: &SqlitePool,
+    library: &Library,
+    object_id: ObjectId,
+    source: &Path,
+) -> ServiceResult<Asset> {
+    let asset =
+        ingest_file(pool, library, object_id, source, AssetKind::Markdown, mime_for_path(source)).await?;
+    let next_sort = next_sort_order(pool, object_id, ObjectAssetRole::Document).await? as i64;
+    repository::objects::attach_asset(pool, object_id, asset.id, ObjectAssetRole::Document, next_sort).await?;
     repository::objects::touch(pool, object_id).await?;
     Ok(asset)
 }
@@ -160,14 +198,24 @@ pub async fn add_attachment(
     object_id: ObjectId,
     source: &Path,
 ) -> ServiceResult<Asset> {
-    // A `.scad` picked through the generic attachment path still becomes a proper
-    // scad asset (own role + preview action), not a CAD attachment.
-    if source
+    // Files picked through the generic attachment path are re-routed to their
+    // proper section when the extension (or content) identifies them: models to
+    // "Models", OpenSCAD/CadQuery to "CAD Scripts", Markdown to "Docs / Notes".
+    let ext = source
         .extension()
         .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case("scad"))
-    {
-        return add_scad(pool, library, object_id, source).await;
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    match ext.as_str() {
+        "scad" => return add_scad(pool, library, object_id, source).await,
+        "stl" | "obj" | "step" | "stp" | "3mf" => {
+            return add_stl(pool, library, object_id, source).await
+        }
+        "md" | "markdown" => return add_doc(pool, library, object_id, source).await,
+        "py" if is_cadquery_py(source) => {
+            return add_cadquery(pool, library, object_id, source).await
+        }
+        _ => {}
     }
     let (kind, mime) = classify_attachment(source);
     let asset = ingest_file(pool, library, object_id, source, kind, mime).await?;
@@ -659,15 +707,42 @@ fn mime_for_path(p: &Path) -> Option<&'static str> {
         Some("svg") => Some("image/svg+xml"),
         Some("pdf") => Some("application/pdf"),
         Some("txt") => Some("text/plain"),
-        Some("md") => Some("text/markdown"),
+        Some("md") | Some("markdown") => Some("text/markdown"),
         Some("json") => Some("application/json"),
         Some("zip") => Some("application/zip"),
         Some("step") | Some("stp") => Some("model/step"),
         Some("scad") => Some("application/x-openscad"),
+        Some("py") => Some("text/x-python"),
         Some("3mf") => Some("model/3mf"),
         Some("obj") => Some("model/obj"),
         _ => None,
     }
+}
+
+/// Map a 3D-model file extension to its [`AssetKind`]. All of these share the
+/// `StlPart` role; the kind only drives which preview path the frontend uses.
+fn classify_model_kind(p: &Path) -> AssetKind {
+    match p.extension().and_then(|e| e.to_str()).map(|s| s.to_ascii_lowercase()).as_deref() {
+        Some("obj") => AssetKind::Obj,
+        Some("step") | Some("stp") => AssetKind::Step,
+        Some("3mf") => AssetKind::Cad,
+        _ => AssetKind::Stl,
+    }
+}
+
+/// Sniff a `.py` file to decide whether it is a CadQuery script. Reads at most the
+/// first 64 KiB and looks for a `cadquery` import (also matches the common
+/// `import cadquery as cq` alias). Mirrors the slicer-sniffing done for gcode.
+pub(crate) fn is_cadquery_py(p: &Path) -> bool {
+    use std::io::Read;
+    let Ok(mut f) = std::fs::File::open(p) else { return false };
+    let mut buf = vec![0u8; 64 * 1024];
+    let n = f.read(&mut buf).unwrap_or(0);
+    let head = String::from_utf8_lossy(&buf[..n]).to_ascii_lowercase();
+    head.lines().any(|line| {
+        let l = line.trim_start();
+        (l.starts_with("import ") || l.starts_with("from ")) && l.contains("cadquery")
+    })
 }
 
 fn classify_attachment(p: &Path) -> (AssetKind, Option<&'static str>) {
