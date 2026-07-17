@@ -8,6 +8,29 @@ BenchVault owns a managed library on disk (human-readable folder layout), so you
 
 ![BenchVault library dashboard](docs/screenshots/library.png)
 
+## Workflow
+
+BenchVault sits at the centre of a print project — from CAD source to a printed part — keeping every artifact filed against the Object it belongs to.
+
+```mermaid
+flowchart LR
+    A["<b>Design</b><br/>OpenSCAD · FreeCAD ·<br/>Blender · any 3D tool"] -->|export STL| B
+    B["<b>BenchVault</b><br/>organize into an Object:<br/>STL parts · .scad sources ·<br/>images · notes · tags"]
+    B -->|open .scad in GUI /<br/>render preview| A
+    B -->|slicer hand-off| C["<b>OrcaSlicer</b><br/>slice → gcode"]
+    C -->|auto-ingest gcode<br/>+ parsed metadata| B
+    B -->|USB sync<br/>+ manifest| D[("<b>USB drive</b>")]
+    D --> E["<b>3D printer</b><br/>print the part"]
+
+    classDef hub fill:#2b6cb0,stroke:#1a365d,color:#fff;
+    class B hub;
+```
+
+1. **Design** a part in OpenSCAD (or FreeCAD, Blender, …) and export an STL — or import one from a URL like Thingiverse.
+2. **Organize** it in BenchVault: STL parts, `.scad` sources, images and notes all live under one Object. Open `.scad` files back in the OpenSCAD GUI or render previews in-app.
+3. **Slice** by handing an asset straight to OrcaSlicer; the resulting gcode is auto-ingested with its slicer metadata parsed.
+4. **Sync** the gcodes to a mounted USB drive with a manifest.
+5. **Print** — feed the USB stick to the printer.
 
 ## Features
 
@@ -20,6 +43,26 @@ BenchVault owns a managed library on disk (human-readable folder layout), so you
 - **USB sync** — detect mounted drives and sync gcodes to them with a manifest, for printers fed by USB stick.
 - **Auto-ingest** — a background watcher picks up files dropped into the library directory and files them automatically.
 - **Full-text search** — SQLite FTS5 across the library.
+
+## Supported formats
+
+Everything you import is stored as a plain file in the managed library. The table shows what BenchVault does *beyond* storing it — parse metadata, preview in 3D, render, or hand off to the slicer.
+
+| Format | Stored | Metadata | 3D preview | Render | Slicer hand-off |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **STL** (`.stl`) | ✅ | — | ✅ | — | ✅ |
+| **G-code** (`.gcode`, `.gco`, `.g`) | ✅ | ✅ rich¹ | — | — | — |
+| G-code binary (`.bgcode`) | ✅ | —² | — | — | — |
+| **OpenSCAD** (`.scad`) | ✅ | — | ✅ via render | ✅ | — |
+| 3MF / OBJ (`.3mf`, `.obj`) | ✅ | — | — | — | — |
+| Images (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.bmp`, `.svg`) | ✅ | — | — | — | — |
+| CAD (`.step`, `.stp`, `.iges`, `.igs`, `.f3d`, `.sldprt`) | ✅ | — | — | — | — |
+| Anything else (`.pdf`, `.txt`, `.md`, `.zip`, …) | ✅ | — | — | — | — |
+
+Images double as object cover art (snapshot the STL viewer, or set any imported image). STL parts are the only assets sent to OrcaSlicer, and OpenSCAD is the only source that renders to a previewable mesh in-app.
+
+¹ Slicer, profile, print time, filament length/weight/type, layer height, and nozzle/bed temps are parsed on import — for the PrusaSlicer family (PrusaSlicer, SuperSlicer, OrcaSlicer, BambuStudio) and Cura. Other slicers are stored without parsed metadata.
+² `.bgcode` is accepted but its binary payload isn't parsed yet.
 
 ## Stack
 
