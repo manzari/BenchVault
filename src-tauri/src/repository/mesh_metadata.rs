@@ -40,6 +40,29 @@ pub async fn upsert(pool: &SqlitePool, m: &MeshMetadata) -> sqlx::Result<()> {
     Ok(())
 }
 
+/// Parseable mesh assets (STL/OBJ) with no `mesh_metadata` row yet, as
+/// (id, relative_path, kind) tuples, for backfill.
+pub async fn mesh_assets_missing(pool: &SqlitePool) -> sqlx::Result<Vec<(AssetId, String, String)>> {
+    let rows = sqlx::query(
+        "SELECT a.id, a.relative_path, a.kind
+           FROM assets a
+           LEFT JOIN mesh_metadata mm ON mm.asset_id = a.id
+          WHERE a.kind IN ('stl', 'obj') AND a.deleted_at IS NULL AND mm.asset_id IS NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            (
+                AssetId(r.get::<i64, _>("id")),
+                r.get::<String, _>("relative_path"),
+                r.get::<String, _>("kind"),
+            )
+        })
+        .collect())
+}
+
 pub async fn get(pool: &SqlitePool, asset_id: AssetId) -> sqlx::Result<Option<MeshMetadata>> {
     let row = sqlx::query("SELECT * FROM mesh_metadata WHERE asset_id = ?")
         .bind(asset_id.0)

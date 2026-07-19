@@ -151,6 +151,19 @@ pub fn run() {
                 let watcher_library = Arc::clone(&library);
                 let watcher_handle = handle.clone();
 
+                // Populate mesh geometry for STLs added before mesh extraction
+                // existed. Detached so it never delays startup; idempotent, so
+                // later launches with nothing missing just run one cheap query.
+                let backfill_pool = pool.clone();
+                let backfill_library = Arc::clone(&library);
+                tauri::async_runtime::spawn(async move {
+                    match service::files::backfill_mesh_metadata(&backfill_pool, &backfill_library).await {
+                        Ok(0) => {}
+                        Ok(n) => eprintln!("[mesh] backfilled geometry for {n} STL(s)"),
+                        Err(e) => eprintln!("[mesh] backfill failed: {e}"),
+                    }
+                });
+
                 let usb_sync_lock = Arc::new(tokio::sync::Mutex::new(()));
                 let autosync = jobs::autosync::spawn(
                     handle.clone(),
