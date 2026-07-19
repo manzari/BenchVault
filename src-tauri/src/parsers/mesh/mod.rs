@@ -1,3 +1,4 @@
+pub mod obj;
 pub mod stl;
 
 /// Geometry computed from a triangle mesh. Distances are in the file's own units

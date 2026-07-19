@@ -254,8 +254,8 @@ async fn ingest_new_file(
         AssetKind::Gcode => {
             service::files::attach_existing_gcode(pool, library, target.object_id, abs).await?;
         }
-        AssetKind::Stl => {
-            service::files::attach_existing_stl(pool, library, target.object_id, abs).await?;
+        AssetKind::Stl | AssetKind::Obj | AssetKind::Step => {
+            service::files::attach_existing_model(pool, library, target.object_id, abs, kind).await?;
         }
         AssetKind::Scad => {
             service::files::attach_existing_scad(pool, library, target.object_id, abs).await?;

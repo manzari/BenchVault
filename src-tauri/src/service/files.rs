@@ -38,20 +38,22 @@ pub async fn add_stl(
 /// today (OBJ/3MF land in later phases); other kinds are skipped. A parse or DB
 /// failure logs and leaves the asset without a `mesh_metadata` sidecar rather
 /// than failing the ingest — mirrors the gcode parser's tolerance.
-async fn store_mesh_metadata(pool: &SqlitePool, asset_id: AssetId, path: &Path, kind: AssetKind) {
-    if !matches!(kind, AssetKind::Stl) {
-        return;
-    }
-    let stats = match mesh::stl::parse_path(path) {
+async fn store_mesh_metadata(pool: &SqlitePool, asset_id: AssetId, path: &Path, kind: AssetKind) -> bool {
+    let (parsed, format) = match kind {
+        AssetKind::Stl => (mesh::stl::parse_path(path), "stl"),
+        AssetKind::Obj => (mesh::obj::parse_path(path), "obj"),
+        _ => return false,
+    };
+    let stats = match parsed {
         Ok(s) => s,
         Err(e) => {
             eprintln!("[mesh] parse failed for {}: {e}", path.display());
-            return;
+            return false;
         }
     };
     let meta = MeshMetadata {
         asset_id,
-        source_format: Some("stl".into()),
+        source_format: Some(format.into()),
         source_units: None,
         triangle_count: Some(stats.triangle_count),
         vertex_count: Some(stats.vertex_count),
@@ -65,7 +67,29 @@ async fn store_mesh_metadata(pool: &SqlitePool, asset_id: AssetId, path: &Path, 
     };
     if let Err(e) = repository::mesh_metadata::upsert(pool, &meta).await {
         eprintln!("[mesh] store failed for {asset_id:?}: {e}");
+        return false;
     }
+    true
+}
+
+/// One-shot: compute geometry for every parseable mesh asset (STL/OBJ) that has
+/// no `mesh_metadata` row yet — files added before mesh extraction existed, or
+/// added for a format the parser only learned later. Idempotent (subsequent
+/// runs find nothing) and best-effort per file. Returns the number of assets
+/// successfully populated. Intended to run detached in the background at startup.
+pub async fn backfill_mesh_metadata(pool: &SqlitePool, library: &Library) -> ServiceResult<usize> {
+    let missing = repository::mesh_metadata::mesh_assets_missing(pool).await?;
+    let mut done = 0usize;
+    for (asset_id, rel, kind_str) in missing {
+        let abs = library.absolute(Path::new(&rel));
+        if !abs.exists() {
+            continue;
+        }
+        if store_mesh_metadata(pool, asset_id, &abs, AssetKind::from_str(&kind_str)).await {
+            done += 1;
+        }
+    }
+    Ok(done)
 }
 
 /// Copy a CadQuery Python script into the managed library, attaching it with the
@@ -595,16 +619,21 @@ pub async fn attach_existing_gcode(
     Ok((asset, metadata))
 }
 
-pub async fn attach_existing_stl(
+/// Register an already-on-disk model file (`.stl`, `.obj`, `.step`, …) as a
+/// `StlPart`. Mesh geometry is computed for the formats the parser understands
+/// (STL/OBJ today); other kinds are attached without it.
+pub async fn attach_existing_model(
     pool: &SqlitePool,
     library: &Library,
     object_id: ObjectId,
     abs: &Path,
+    kind: AssetKind,
 ) -> ServiceResult<Asset> {
-    let asset = attach_existing_inner(pool, library, abs, AssetKind::Stl, mime_for_stl(), None).await?;
+    let mime = mime_for_path(abs).or_else(mime_for_stl);
+    let asset = attach_existing_inner(pool, library, abs, kind, mime, None).await?;
     let next_sort = next_sort_order(pool, object_id, ObjectAssetRole::StlPart).await? as i64;
     repository::objects::attach_asset(pool, object_id, asset.id, ObjectAssetRole::StlPart, next_sort).await?;
-    store_mesh_metadata(pool, asset.id, abs, AssetKind::Stl).await;
+    store_mesh_metadata(pool, asset.id, abs, kind).await;
     repository::objects::touch(pool, object_id).await?;
     Ok(asset)
 }
