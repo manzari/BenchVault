@@ -2,6 +2,8 @@ import {
   ActionIcon,
   Badge,
   Button,
+  Code,
+  Collapse,
   Group,
   Stack,
   Table,
@@ -10,6 +12,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import {
+  IconChevronRight,
   IconEye,
   IconFileCode,
   IconPencil,
@@ -17,7 +20,7 @@ import {
   IconPlus,
   IconTrash,
 } from "@tabler/icons-react";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { open, ask } from "@tauri-apps/plugin-dialog";
 import { notifications } from "@mantine/notifications";
 import type { AttachedAsset } from "../lib/types";
@@ -25,6 +28,13 @@ import { api } from "../lib/api";
 import { notifyError, withErrorToast } from "../lib/errors";
 import { renderStlToPng } from "../lib/stlRender";
 import { formatBytes } from "../lib/format";
+import {
+  groupScadParameters,
+  parseScadMetadata,
+  scadHasDetail,
+  scadSummary,
+  type ScadMetadata,
+} from "../lib/scad";
 import { EmptyState } from "./EmptyState";
 
 interface Props {
@@ -40,6 +50,14 @@ interface Props {
 export function ScadList({ objectId, scads, onMutated, onCoverChanged, onPreview }: Props) {
   // OpenSCAD is optional; when it's absent the render-dependent actions degrade.
   const [openscadAvailable, setOpenscadAvailable] = useState<boolean | null>(null);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+
+  const toggleExpanded = (id: number) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
 
   useEffect(() => {
     let cancelled = false;
@@ -138,21 +156,55 @@ export function ScadList({ objectId, scads, onMutated, onCoverChanged, onPreview
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {scads.map((p, i) => (
-                <Table.Tr key={p.asset.id}>
+              {scads.map((p, i) => {
+                const meta = parseScadMetadata(p.asset.metadata_json);
+                const summary = scadSummary(meta);
+                const hasDetail = scadHasDetail(meta);
+                const isOpen = expanded.has(p.asset.id);
+                return (
+                <Fragment key={p.asset.id}>
+                <Table.Tr>
                   <Table.Td>
                     <Text size="sm" c="dimmed" ff="monospace">
                       {i + 1}
                     </Text>
                   </Table.Td>
                   <Table.Td>
-                    <Group gap={6} wrap="nowrap">
-                      <Text size="sm" truncate fw={500}>
-                        {p.asset.original_filename}
-                      </Text>
-                      <Badge size="xs" variant="light" color={p.asset.kind === "cadquery" ? "teal" : "grape"}>
-                        {p.asset.kind === "cadquery" ? "CadQuery" : "OpenSCAD"}
-                      </Badge>
+                    <Group gap={6} wrap="nowrap" align="flex-start">
+                      {hasDetail ? (
+                        <ActionIcon
+                          variant="subtle"
+                          color="gray"
+                          size="sm"
+                          aria-label={isOpen ? "Hide details" : "Show details"}
+                          onClick={() => toggleExpanded(p.asset.id)}
+                        >
+                          <IconChevronRight
+                            size={14}
+                            style={{
+                              transition: "transform 150ms",
+                              transform: isOpen ? "rotate(90deg)" : "none",
+                            }}
+                          />
+                        </ActionIcon>
+                      ) : (
+                        <span style={{ display: "inline-block", width: 28 }} />
+                      )}
+                      <div style={{ minWidth: 0 }}>
+                        <Group gap={6} wrap="nowrap">
+                          <Text size="sm" truncate fw={500}>
+                            {p.asset.original_filename}
+                          </Text>
+                          <Badge size="xs" variant="light" color={p.asset.kind === "cadquery" ? "teal" : "grape"}>
+                            {p.asset.kind === "cadquery" ? "CadQuery" : "OpenSCAD"}
+                          </Badge>
+                        </Group>
+                        {summary && (
+                          <Text size="xs" c="dimmed">
+                            {summary}
+                          </Text>
+                        )}
+                      </div>
                     </Group>
                   </Table.Td>
                   <Table.Td>
@@ -225,7 +277,18 @@ export function ScadList({ objectId, scads, onMutated, onCoverChanged, onPreview
                     </Group>
                   </Table.Td>
                 </Table.Tr>
-              ))}
+                {hasDetail && meta && (
+                  <Table.Tr>
+                    <Table.Td colSpan={4} p={0} style={{ borderTop: "none" }}>
+                      <Collapse in={isOpen}>
+                        <ScadDetail meta={meta} />
+                      </Collapse>
+                    </Table.Td>
+                  </Table.Tr>
+                )}
+                </Fragment>
+                );
+              })}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
@@ -237,4 +300,60 @@ export function ScadList({ objectId, scads, onMutated, onCoverChanged, onPreview
 function baseName(p: string): string {
   const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
   return i >= 0 ? p.slice(i + 1) : p;
+}
+
+function ScadDetail({ meta }: { meta: ScadMetadata }) {
+  const deps = [...meta.includes, ...meta.uses];
+  const groups = groupScadParameters(meta.parameters);
+  return (
+    <Stack gap="sm" px="md" py="sm" bg="var(--mantine-color-default-hover)">
+      {meta.parameters.length > 0 && (
+        <Stack gap={6}>
+          {groups.map((g, gi) => (
+            <div key={gi}>
+              {g.group && (
+                <Text size="xs" tt="uppercase" fw={700} c="dimmed" mb={2}>
+                  {g.group}
+                </Text>
+              )}
+              <Stack gap={2}>
+                {g.params.map((param) => (
+                  <Group key={param.name} gap={8} wrap="nowrap">
+                    <Text size="xs" ff="monospace">
+                      <Text span c="grape">
+                        {param.name}
+                      </Text>{" "}
+                      = {param.default}
+                    </Text>
+                    {param.hint && (
+                      <Text size="xs" c="dimmed" ff="monospace">
+                        [{param.hint}]
+                      </Text>
+                    )}
+                  </Group>
+                ))}
+              </Stack>
+            </div>
+          ))}
+        </Stack>
+      )}
+      <MetaLine label="Depends on" items={deps} />
+      <MetaLine label="Modules" items={meta.modules} />
+      <MetaLine label="Functions" items={meta.functions} />
+    </Stack>
+  );
+}
+
+function MetaLine({ label, items }: { label: string; items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <Group gap={6} wrap="wrap" align="center">
+      <Text size="xs" c="dimmed" fw={600}>
+        {label}
+      </Text>
+      {items.map((it) => (
+        <Code key={it}>{it}</Code>
+      ))}
+    </Group>
+  );
 }
