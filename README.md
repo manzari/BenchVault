@@ -25,7 +25,7 @@ flowchart LR
 ```
 
 1. **Design** a part in OpenSCAD (or FreeCAD, Blender, …) and export an STL — or import one from a URL like Thingiverse.
-2. **Organize** it in BenchVault: models (STL/OBJ/STEP), CAD scripts (`.scad`, CadQuery `.py`), images, markdown docs and notes all live under one Object. Open `.scad` files back in the OpenSCAD GUI or render previews in-app.
+2. **Organize** it in BenchVault: models (STL/OBJ/STEP/3MF), CAD scripts (`.scad`, CadQuery `.py`), images, markdown docs and notes all live under one Object. Open `.scad` files back in the OpenSCAD GUI or render previews in-app.
 3. **Slice** by handing an asset straight to OrcaSlicer; the resulting gcode is auto-ingested with its slicer metadata parsed.
 4. **Sync** the gcodes to a mounted USB drive with a manifest.
 5. **Print** — feed the USB stick to the printer.
@@ -34,9 +34,10 @@ flowchart LR
 
 - **Library organization** — nested folders, objects with cover images, tags, manual sort order, breadcrumb navigation.
 - **3D preview** — interactive three.js viewer for STL and OBJ; snapshot any angle as the object's cover image.
+- **Model geometry** — triangle/vertex counts, bounding-box size, volume, surface area, and watertightness computed on import for STL, OBJ, and 3MF; 3MF also carries its declared units, document metadata, and an embedded thumbnail that auto-fills the object cover.
 - **Docs & CAD scripts** — keep markdown notes (rendered as GitHub-flavored markdown) and CadQuery/OpenSCAD scripts filed alongside the part.
 - **Gcode metadata** — slicer, profile, print time, filament usage parsed on import. Supports the PrusaSlicer family (PrusaSlicer, SuperSlicer, OrcaSlicer, BambuStudio) and Cura.
-- **OpenSCAD support** — open `.scad` sources in the OpenSCAD GUI, or render previews via the OpenSCAD CLI (cached on disk) right in the app.
+- **OpenSCAD support** — open `.scad` sources in the OpenSCAD GUI, render previews via the OpenSCAD CLI (cached on disk), and see extracted customizer parameters, dependencies, and module/function names in the CAD Scripts list.
 - **Slicer hand-off** — open assets directly in OrcaSlicer.
 - **Import from URL** — paste a Thingiverse link to create an object with title, author, license, and cover image; with an API token the model files are downloaded too.
 - **USB sync** — detect mounted drives and sync gcodes to them with a manifest, for printers fed by USB stick.
@@ -47,27 +48,21 @@ flowchart LR
 
 Everything you import is stored as a plain file in the managed library. The table shows what BenchVault does *beyond* storing it — parse metadata, preview in 3D, render, or hand off to the slicer.
 
-| Format | Stored | Metadata | 3D preview | Render | Slicer hand-off |
-|---|:---:|:---:|:---:|:---:|:---:|
-| **STL** (`.stl`) | ✅ | — | ✅ | — | ✅ |
-| **OBJ** (`.obj`) | ✅ | — | ✅ | — | — |
-| **G-code** (`.gcode`, `.gco`, `.g`) | ✅ | ✅ rich¹ | — | — | — |
-| G-code binary (`.bgcode`) | ✅ | —² | — | — | — |
-| **OpenSCAD** (`.scad`) | ✅ | — | ✅ via render | ✅ | — |
-| **CadQuery** (`.py`) | ✅³ | — | — | — | — |
-| **Markdown** (`.md`, `.markdown`) | ✅ | — | rendered⁴ | — | — |
-| 3MF (`.3mf`) | ✅ | — | — | — | — |
-| CAD / STEP (`.step`, `.stp`, `.iges`, `.igs`, `.f3d`, `.sldprt`) | ✅ | — | — | — | — |
-| Images (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.bmp`, `.svg`) | ✅ | — | — | — | — |
-| Anything else (`.pdf`, `.txt`, `.zip`, …) | ✅ | — | — | — | — |
+| Format | Stored |  Metadata   |    Preview    | Render |  Hand-off  |
+|---|:------:|:-----------:|:-------------:|:---:|:----------:|
+| **STL** (`.stl`) |   ✅   | ✅ geometry |      ✅       | — | ✅ to orca |
+| **OBJ** (`.obj`) |   ✅   | ✅ geometry |      ✅       | — |     —      |
+| **3MF** (`.3mf`) |   ✅   |     ✅      |       —       | — |     —      |
+| **G-code** (`.gcode`, `.gco`, `.g`) |   ✅   |     ✅      |       —       | — |     —      |
+| G-code binary (`.bgcode`) |   ✅   |      —      |       —       | — |     —      |
+| **OpenSCAD** (`.scad`) |   ✅   |  ✅ static  | ✅ via render | ✅ |     —      |
+| **CadQuery** (`.py`) |   ✅   |      —      |       —       | — |     —      |
+| **Markdown** (`.md`, `.markdown`) |   ✅   |      —      |   ✅ via render    | ✅ |     —      |
+| CAD / STEP (`.step`, `.stp`, `.iges`, `.igs`, `.f3d`, `.sldprt`) |   ✅   |      —      |       —       | — |     —      |
+| Images (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.bmp`, `.svg`) |   ✅   |      —      |       —       | — |     —      |
+| Anything else (`.pdf`, `.txt`, `.zip`, …) |   ✅   |      —      |       —       | — |     —      |
 
-Models (STL/OBJ/STEP/3MF) share one **Models** section; STL and OBJ render directly in the in-app 3D viewer, while STEP/3MF are stored and listed. OpenSCAD and CadQuery scripts share a **CAD Scripts** section (OpenSCAD sources also render to a previewable mesh). Markdown files render as formatted notes in a **Docs / Notes** section. Images double as object cover art (snapshot the 3D viewer, or set any imported image). STL parts are the only assets sent to OrcaSlicer.
-
-¹ Slicer, profile, print time, filament length/weight/type, layer height, and nozzle/bed temps are parsed on import — for the PrusaSlicer family (PrusaSlicer, SuperSlicer, OrcaSlicer, BambuStudio) and Cura. Other slicers are stored without parsed metadata.
-² `.bgcode` is accepted but its binary payload isn't parsed yet.
-³ A `.py` file is filed as a CadQuery script only when it imports `cadquery`; other Python files are stored as generic attachments.
-⁴ Rendered as formatted markdown (GitHub-flavored) in the object's Docs / Notes section, not in the 3D viewer.
-
+Models (STL/OBJ/STEP/3MF) share one **Models** section; STL and OBJ render directly in the in-app 3D viewer, while STEP and 3MF are stored and listed (3MF still gets its geometry and metadata parsed on import). OpenSCAD and CadQuery scripts share a **CAD Scripts** section (OpenSCAD sources also render to a previewable mesh, and their parameters/dependencies are listed). Markdown files render as formatted notes in a **Docs / Notes** section. Images double as object cover art (snapshot the 3D viewer, set any imported image, or let a 3MF's embedded thumbnail fill in). STL parts are the only assets sent to OrcaSlicer.
 ## Stack
 
 - **Tauri 2** — Rust backend + system webview
