@@ -1,6 +1,6 @@
 [package]
 name = "benchvault"
-version = "0.1.0"
+version = "0.1.1"
 description = "Desktop app for organizing 3D-printing projects"
 authors = ["manzari"]
 repository = "https://codeberg.org/manzari/benchvault"
