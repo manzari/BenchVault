@@ -276,6 +276,7 @@ pub async fn render_preview(
 
     // Cache hit: STL + manifest present and every dep unchanged.
     if let Some(bytes) = try_cache_hit(&stl_path, &manifest_path) {
+        store_geometry(pool, asset_id, &bytes).await;
         return Ok(bytes);
     }
 
@@ -341,8 +342,28 @@ pub async fn render_preview(
             };
             std::fs::write(&manifest_path, serde_json::to_vec(&manifest)?)?;
             std::fs::rename(&tmp_path, &stl_path)?;
-            Ok(std::fs::read(&stl_path)?)
+            let bytes = std::fs::read(&stl_path)?;
+            store_geometry(pool, asset_id, &bytes).await;
+            Ok(bytes)
         }
+    }
+}
+
+/// Best-effort: derive geometry from a freshly rendered `.scad` STL and store it
+/// in `mesh_metadata` (tagged `source_format = "scad"`) so it shows up in the same
+/// dimensions/volume UI as STL/OBJ. Runs on every render (cache hit or miss); a
+/// parse or DB failure is logged and ignored — it must never fail a preview.
+async fn store_geometry(pool: &SqlitePool, asset_id: AssetId, stl_bytes: &[u8]) {
+    let stats = match crate::parsers::mesh::stl::parse_bytes(stl_bytes) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("[scad] geometry parse failed for {asset_id:?}: {e}");
+            return;
+        }
+    };
+    let meta = stats.to_metadata(asset_id, "scad");
+    if let Err(e) = repository::mesh_metadata::upsert(pool, &meta).await {
+        eprintln!("[scad] geometry store failed for {asset_id:?}: {e}");
     }
 }
 

@@ -3,7 +3,7 @@
 //! prefix, since binary files often begin with "solid" too.
 
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Cursor, Read, Seek};
 use std::path::Path;
 
 use super::{MeshAccumulator, MeshStats};
@@ -14,8 +14,18 @@ const BINARY_TRI: u64 = 50; // 12 f32 + u16 attribute
 pub fn parse_path(path: &Path) -> std::io::Result<MeshStats> {
     let len = std::fs::metadata(path)?.len();
     let mut f = BufReader::new(File::open(path)?);
-    if is_binary(&mut f, len)? {
-        parse_binary(&mut f)
+    parse_reader(&mut f, len)
+}
+
+/// Parse STL geometry from an in-memory buffer (e.g. the bytes an OpenSCAD render
+/// produced) without touching disk.
+pub fn parse_bytes(bytes: &[u8]) -> std::io::Result<MeshStats> {
+    parse_reader(&mut Cursor::new(bytes), bytes.len() as u64)
+}
+
+fn parse_reader<R: Read + Seek>(f: &mut R, len: u64) -> std::io::Result<MeshStats> {
+    if is_binary(f, len)? {
+        parse_binary(f)
     } else {
         let mut s = String::new();
         f.read_to_string(&mut s)?;
@@ -24,8 +34,7 @@ pub fn parse_path(path: &Path) -> std::io::Result<MeshStats> {
 }
 
 /// Binary when the declared triangle count matches the file size exactly.
-fn is_binary(f: &mut BufReader<File>, len: u64) -> std::io::Result<bool> {
-    use std::io::Seek;
+fn is_binary<R: Read + Seek>(f: &mut R, len: u64) -> std::io::Result<bool> {
     if len < BINARY_HEADER {
         return Ok(false);
     }
@@ -36,7 +45,7 @@ fn is_binary(f: &mut BufReader<File>, len: u64) -> std::io::Result<bool> {
     Ok(len == BINARY_HEADER + count * BINARY_TRI)
 }
 
-fn parse_binary(f: &mut BufReader<File>) -> std::io::Result<MeshStats> {
+fn parse_binary<R: Read>(f: &mut R) -> std::io::Result<MeshStats> {
     let mut header = [0u8; 80];
     f.read_exact(&mut header)?;
     let mut cnt = [0u8; 4];
@@ -127,6 +136,40 @@ mod tests {
         assert!((stats.volume - 24.0).abs() < 1e-6, "volume {}", stats.volume);
         // surface area = 2*(2*3 + 3*4 + 2*4) = 2*26 = 52
         assert!((stats.surface_area - 52.0).abs() < 1e-6, "area {}", stats.surface_area);
+        assert!(stats.is_watertight);
+    }
+
+    // Same box, encoded as a binary STL, to exercise parse_bytes + binary detection.
+    fn box_binary(sx: f64, sy: f64, sz: f64) -> Vec<u8> {
+        let v = [
+            [0.0, 0.0, 0.0], [sx, 0.0, 0.0], [sx, sy, 0.0], [0.0, sy, 0.0],
+            [0.0, 0.0, sz], [sx, 0.0, sz], [sx, sy, sz], [0.0, sy, sz],
+        ];
+        let faces = [
+            [0, 3, 2], [0, 2, 1], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4],
+            [2, 3, 7], [2, 7, 6], [1, 2, 6], [1, 6, 5], [0, 4, 7], [0, 7, 3],
+        ];
+        let mut b = vec![0u8; 80];
+        b.extend_from_slice(&(faces.len() as u32).to_le_bytes());
+        for face in faces {
+            b.extend_from_slice(&[0u8; 12]); // normal
+            for idx in face {
+                for c in v[idx] {
+                    b.extend_from_slice(&(c as f32).to_le_bytes());
+                }
+            }
+            b.extend_from_slice(&[0u8; 2]); // attribute byte count
+        }
+        b
+    }
+
+    #[test]
+    fn binary_box_via_parse_bytes() {
+        let stats = parse_bytes(&box_binary(2.0, 3.0, 4.0)).unwrap();
+        assert_eq!(stats.triangle_count, 12);
+        assert_eq!(stats.vertex_count, 8);
+        assert_eq!(stats.bbox, [2.0, 3.0, 4.0]);
+        assert!((stats.volume - 24.0).abs() < 1e-6, "volume {}", stats.volume);
         assert!(stats.is_watertight);
     }
 

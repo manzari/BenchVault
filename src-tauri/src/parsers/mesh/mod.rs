@@ -1,6 +1,8 @@
 pub mod obj;
 pub mod stl;
 
+use crate::domain::{AssetId, MeshMetadata};
+
 /// Geometry computed from a triangle mesh. Distances are in the file's own units
 /// (millimeters for STL). Shared across mesh formats so OBJ/3MF can populate the
 /// same `mesh_metadata` row later.
@@ -12,6 +14,27 @@ pub struct MeshStats {
     pub volume: f64,
     pub surface_area: f64,
     pub is_watertight: bool,
+}
+
+impl MeshStats {
+    /// Build a `mesh_metadata` row from these stats. `format` records how the
+    /// geometry was obtained ("stl" | "obj" | "scad" for a rendered source).
+    pub fn to_metadata(&self, asset_id: AssetId, format: &str) -> MeshMetadata {
+        MeshMetadata {
+            asset_id,
+            source_format: Some(format.to_string()),
+            source_units: None,
+            triangle_count: Some(self.triangle_count),
+            vertex_count: Some(self.vertex_count),
+            bbox_x_mm: Some(self.bbox[0]),
+            bbox_y_mm: Some(self.bbox[1]),
+            bbox_z_mm: Some(self.bbox[2]),
+            volume_mm3: Some(self.volume),
+            surface_area_mm2: Some(self.surface_area),
+            is_watertight: Some(self.is_watertight),
+            parsed_at: Some(crate::db::now_ts()),
+        }
+    }
 }
 
 /// Accumulates triangles into a [`MeshStats`]: bounding box, signed volume,

@@ -5,7 +5,7 @@ use sqlx::SqlitePool;
 
 use crate::db::now_ts;
 use crate::domain::{
-    Asset, AssetId, AssetKind, GcodeMetadata, MeshMetadata, ObjectAssetRole, ObjectId, ParsedGcode,
+    Asset, AssetId, AssetKind, GcodeMetadata, ObjectAssetRole, ObjectId, ParsedGcode,
 };
 use crate::library::{self, Library};
 use crate::parsers::{gcode, mesh, scad};
@@ -51,20 +51,7 @@ async fn store_mesh_metadata(pool: &SqlitePool, asset_id: AssetId, path: &Path, 
             return false;
         }
     };
-    let meta = MeshMetadata {
-        asset_id,
-        source_format: Some(format.into()),
-        source_units: None,
-        triangle_count: Some(stats.triangle_count),
-        vertex_count: Some(stats.vertex_count),
-        bbox_x_mm: Some(stats.bbox[0]),
-        bbox_y_mm: Some(stats.bbox[1]),
-        bbox_z_mm: Some(stats.bbox[2]),
-        volume_mm3: Some(stats.volume),
-        surface_area_mm2: Some(stats.surface_area),
-        is_watertight: Some(stats.is_watertight),
-        parsed_at: Some(crate::db::now_ts()),
-    };
+    let meta = stats.to_metadata(asset_id, format);
     if let Err(e) = repository::mesh_metadata::upsert(pool, &meta).await {
         eprintln!("[mesh] store failed for {asset_id:?}: {e}");
         return false;
@@ -116,6 +103,27 @@ async fn store_scad_metadata(pool: &SqlitePool, asset_id: AssetId, path: &Path) 
         return false;
     }
     true
+}
+
+/// One-shot: render every `.scad` asset that has no `mesh_metadata` row yet and
+/// store the resulting geometry (dimensions/volume/…), so SCAD sources join STL
+/// and OBJ in the geometry UI. Rendering is expensive and needs the OpenSCAD
+/// binary, so this is skipped entirely when it isn't configured, and runs
+/// detached at startup. The render itself upserts the sidecar (see
+/// [`super::openscad::render_preview`]); we only drive it and count successes.
+pub async fn backfill_scad_geometry(pool: &SqlitePool, library: &Library) -> ServiceResult<usize> {
+    if super::openscad::get_configured_path(pool).await?.is_none() {
+        return Ok(0);
+    }
+    let missing = repository::mesh_metadata::scad_geometry_missing(pool).await?;
+    let mut done = 0usize;
+    for asset_id in missing {
+        match super::openscad::render_preview(pool, library, asset_id).await {
+            Ok(_) => done += 1,
+            Err(e) => eprintln!("[scad] geometry backfill render failed for {asset_id:?}: {e}"),
+        }
+    }
+    Ok(done)
 }
 
 /// One-shot: statically analyse every `.scad` asset with no `metadata_json` yet.
