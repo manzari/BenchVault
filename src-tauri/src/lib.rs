@@ -162,6 +162,11 @@ pub fn run() {
                         Ok(n) => eprintln!("[mesh] backfilled geometry for {n} STL(s)"),
                         Err(e) => eprintln!("[mesh] backfill failed: {e}"),
                     }
+                    match service::files::backfill_scad_metadata(&backfill_pool, &backfill_library).await {
+                        Ok(0) => {}
+                        Ok(n) => eprintln!("[scad] backfilled metadata for {n} source(s)"),
+                        Err(e) => eprintln!("[scad] backfill failed: {e}"),
+                    }
                 });
 
                 let usb_sync_lock = Arc::new(tokio::sync::Mutex::new(()));

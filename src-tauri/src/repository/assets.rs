@@ -67,6 +67,38 @@ pub async fn finalize(
     get(pool, id).await
 }
 
+/// Update just the loose `metadata_json` blob on an existing asset (e.g. after
+/// statically analysing a `.scad` source). Leaves path/size/hash untouched.
+pub async fn update_metadata_json(
+    pool: &SqlitePool,
+    id: AssetId,
+    metadata_json: Option<&str>,
+) -> sqlx::Result<()> {
+    sqlx::query("UPDATE assets SET metadata_json = ?, updated_at = ? WHERE id = ?")
+        .bind(metadata_json)
+        .bind(now_ts())
+        .bind(id.0)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// `.scad` assets with no `metadata_json` yet, as (id, relative_path) pairs, for
+/// backfill. CadQuery scripts share the `scad` role but are `kind = 'cadquery'`,
+/// so they're excluded — only OpenSCAD sources are statically analysed.
+pub async fn scad_assets_missing(pool: &SqlitePool) -> sqlx::Result<Vec<(AssetId, String)>> {
+    let rows = sqlx::query(
+        "SELECT id, relative_path FROM assets
+          WHERE kind = 'scad' AND deleted_at IS NULL AND metadata_json IS NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| (AssetId(r.get::<i64, _>("id")), r.get::<String, _>("relative_path")))
+        .collect())
+}
+
 pub async fn get(pool: &SqlitePool, id: AssetId) -> sqlx::Result<Asset> {
     let row = sqlx::query("SELECT * FROM assets WHERE id = ?")
         .bind(id.0)

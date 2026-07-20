@@ -8,7 +8,7 @@ use crate::domain::{
     Asset, AssetId, AssetKind, GcodeMetadata, MeshMetadata, ObjectAssetRole, ObjectId, ParsedGcode,
 };
 use crate::library::{self, Library};
-use crate::parsers::{gcode, mesh};
+use crate::parsers::{gcode, mesh, scad};
 use crate::repository;
 
 use super::objects as svc_objects;
@@ -92,6 +92,50 @@ pub async fn backfill_mesh_metadata(pool: &SqlitePool, library: &Library) -> Ser
     Ok(done)
 }
 
+/// Best-effort: statically analyse a `.scad` source and store the result as the
+/// asset's `metadata_json`. Never fails the ingest — a read/parse error logs and
+/// leaves the asset without the sidecar. Stored even when empty so backfill (which
+/// keys on a NULL `metadata_json`) doesn't re-scan geometry-only sources.
+async fn store_scad_metadata(pool: &SqlitePool, asset_id: AssetId, path: &Path) -> bool {
+    let meta = match scad::parse_path(path) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("[scad] parse failed for {}: {e}", path.display());
+            return false;
+        }
+    };
+    let json = match serde_json::to_string(&meta) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("[scad] serialize failed for {asset_id:?}: {e}");
+            return false;
+        }
+    };
+    if let Err(e) = repository::assets::update_metadata_json(pool, asset_id, Some(&json)).await {
+        eprintln!("[scad] store failed for {asset_id:?}: {e}");
+        return false;
+    }
+    true
+}
+
+/// One-shot: statically analyse every `.scad` asset with no `metadata_json` yet.
+/// Idempotent and best-effort per file; runs detached at startup like the mesh
+/// backfill. Returns the number of assets populated.
+pub async fn backfill_scad_metadata(pool: &SqlitePool, library: &Library) -> ServiceResult<usize> {
+    let missing = repository::assets::scad_assets_missing(pool).await?;
+    let mut done = 0usize;
+    for (asset_id, rel) in missing {
+        let abs = library.absolute(Path::new(&rel));
+        if !abs.exists() {
+            continue;
+        }
+        if store_scad_metadata(pool, asset_id, &abs).await {
+            done += 1;
+        }
+    }
+    Ok(done)
+}
+
 /// Copy a CadQuery Python script into the managed library, attaching it with the
 /// `scad` role so it shares the "CAD Scripts" section with OpenSCAD sources
 /// (mirrors [`add_scad`]).
@@ -137,6 +181,7 @@ pub async fn add_scad(
         ingest_file(pool, library, object_id, source, AssetKind::Scad, mime_for_path(source)).await?;
     let next_sort = next_sort_order(pool, object_id, ObjectAssetRole::Scad).await? as i64;
     repository::objects::attach_asset(pool, object_id, asset.id, ObjectAssetRole::Scad, next_sort).await?;
+    store_scad_metadata(pool, asset.id, source).await;
     repository::objects::touch(pool, object_id).await?;
     Ok(asset)
 }
@@ -648,6 +693,7 @@ pub async fn attach_existing_scad(
         attach_existing_inner(pool, library, abs, AssetKind::Scad, mime_for_path(abs), None).await?;
     let next_sort = next_sort_order(pool, object_id, ObjectAssetRole::Scad).await? as i64;
     repository::objects::attach_asset(pool, object_id, asset.id, ObjectAssetRole::Scad, next_sort).await?;
+    store_scad_metadata(pool, asset.id, abs).await;
     repository::objects::touch(pool, object_id).await?;
     Ok(asset)
 }
