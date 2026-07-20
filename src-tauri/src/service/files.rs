@@ -8,7 +8,7 @@ use crate::domain::{
     Asset, AssetId, AssetKind, GcodeMetadata, ObjectAssetRole, ObjectId, ParsedGcode,
 };
 use crate::library::{self, Library};
-use crate::parsers::{gcode, mesh, scad};
+use crate::parsers::{gcode, mesh, scad, threemf};
 use crate::repository;
 
 use super::objects as svc_objects;
@@ -29,15 +29,119 @@ pub async fn add_stl(
     let asset = ingest_file(pool, library, object_id, source, kind, mime).await?;
     let next_sort = next_sort_order(pool, object_id, ObjectAssetRole::StlPart).await? as i64;
     repository::objects::attach_asset(pool, object_id, asset.id, ObjectAssetRole::StlPart, next_sort).await?;
-    store_mesh_metadata(pool, asset.id, source, kind).await;
+    store_model_derived(pool, library, object_id, asset.id, source, kind).await;
     repository::objects::touch(pool, object_id).await?;
     Ok(asset)
 }
 
-/// Best-effort: compute and store geometry for a mesh asset. Only STL is parsed
-/// today (OBJ/3MF land in later phases); other kinds are skipped. A parse or DB
-/// failure logs and leaves the asset without a `mesh_metadata` sidecar rather
-/// than failing the ingest — mirrors the gcode parser's tolerance.
+/// Best-effort dispatch for a freshly-attached model asset: 3MF carries units,
+/// document metadata, and an embedded thumbnail on top of geometry, so it goes
+/// through [`store_threemf`]; STL/OBJ only need geometry. Never fatal.
+async fn store_model_derived(
+    pool: &SqlitePool,
+    library: &Library,
+    object_id: ObjectId,
+    asset_id: AssetId,
+    path: &Path,
+    kind: AssetKind,
+) -> bool {
+    if matches!(kind, AssetKind::ThreeMf) {
+        store_threemf(pool, library, object_id, asset_id, path).await
+    } else {
+        store_mesh_metadata(pool, asset_id, path, kind).await
+    }
+}
+
+/// Best-effort: parse a 3MF once and persist everything it yields — geometry (in
+/// mm) and declared units into `mesh_metadata`, loose document metadata into
+/// `assets.metadata_json`, and an embedded thumbnail as the object cover when the
+/// object has none. A failure at any step logs and moves on rather than failing
+/// the ingest, mirroring the other parsers' tolerance.
+async fn store_threemf(
+    pool: &SqlitePool,
+    library: &Library,
+    object_id: ObjectId,
+    asset_id: AssetId,
+    path: &Path,
+) -> bool {
+    let parsed = match threemf::parse_path(path) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("[3mf] parse failed for {}: {e}", path.display());
+            return false;
+        }
+    };
+
+    // Geometry + units. `to_metadata` leaves `source_units` NULL; 3MF is the one
+    // format that fills it, so set it on the returned row.
+    let mut meta = parsed.stats.to_metadata(asset_id, "threemf");
+    meta.source_units = parsed.units.clone();
+    if let Err(e) = repository::mesh_metadata::upsert(pool, &meta).await {
+        eprintln!("[3mf] mesh store failed for {asset_id:?}: {e}");
+    }
+
+    // Loose document metadata (Title/Designer/…/object names/slicer settings).
+    let doc = serde_json::json!({
+        "format": "threemf",
+        "units": parsed.units,
+        "metadata": parsed.metadata,
+        "object_names": parsed.object_names,
+        "slicer_config": parsed.slicer_config,
+    });
+    match serde_json::to_string(&doc) {
+        Ok(json) => {
+            if let Err(e) = repository::assets::update_metadata_json(pool, asset_id, Some(&json)).await {
+                eprintln!("[3mf] metadata_json store failed for {asset_id:?}: {e}");
+            }
+        }
+        Err(e) => eprintln!("[3mf] metadata serialize failed for {asset_id:?}: {e}"),
+    }
+
+    // Embedded preview → cover, only when the object has none (don't override a
+    // user-chosen cover or leave an orphan image if one already exists).
+    if let Some(png) = parsed.thumbnail {
+        if let Err(e) = set_cover_from_threemf_thumbnail(pool, library, object_id, &png).await {
+            eprintln!("[3mf] cover-from-thumbnail failed for {object_id:?}: {e}");
+        }
+    }
+    true
+}
+
+/// Marker stored on thumbnail covers auto-captured from a 3MF's embedded preview.
+/// Distinct from the STL render marker so the two auto-cover sources stay separable.
+const THREEMF_COVER_MARKER: &str = "{\"generated\":\"3mf_thumbnail\"}";
+
+/// Ingest a 3MF's embedded PNG as the object cover, but only if the object has no
+/// cover yet. No-op otherwise — avoids overriding a user's cover and avoids leaving
+/// an unused image asset behind.
+async fn set_cover_from_threemf_thumbnail(
+    pool: &SqlitePool,
+    library: &Library,
+    object_id: ObjectId,
+    png: &[u8],
+) -> ServiceResult<()> {
+    if repository::objects::has_cover(pool, object_id).await? {
+        return Ok(());
+    }
+    let asset = ingest_bytes_with_extras(
+        pool,
+        library,
+        object_id,
+        png,
+        "thumbnail.png",
+        Some("image/png"),
+        Some(THREEMF_COVER_MARKER),
+    )
+    .await?;
+    repository::objects::attach_asset(pool, object_id, asset.id, ObjectAssetRole::Attachment, 0).await?;
+    repository::objects::set_cover_if_missing(pool, object_id, asset.id).await?;
+    Ok(())
+}
+
+/// Best-effort: compute and store geometry for a mesh asset (STL/OBJ). 3MF is
+/// handled by [`store_threemf`] instead. A parse or DB failure logs and leaves the
+/// asset without a `mesh_metadata` sidecar rather than failing the ingest —
+/// mirrors the gcode parser's tolerance.
 async fn store_mesh_metadata(pool: &SqlitePool, asset_id: AssetId, path: &Path, kind: AssetKind) -> bool {
     let (parsed, format) = match kind {
         AssetKind::Stl => (mesh::stl::parse_path(path), "stl"),
@@ -73,6 +177,30 @@ pub async fn backfill_mesh_metadata(pool: &SqlitePool, library: &Library) -> Ser
             continue;
         }
         if store_mesh_metadata(pool, asset_id, &abs, AssetKind::from_str(&kind_str)).await {
+            done += 1;
+        }
+    }
+    Ok(done)
+}
+
+/// One-shot: (re)derive geometry, units, metadata_json, and cover for every 3MF
+/// asset with no `mesh_metadata` row yet — files added before 3MF extraction
+/// existed. 3MF needs the owning object to attach a thumbnail cover, so it can't
+/// piggyback on [`backfill_mesh_metadata`] (which is object-agnostic). Idempotent
+/// and best-effort per file; runs detached at startup. Returns the count populated.
+pub async fn backfill_threemf(pool: &SqlitePool, library: &Library) -> ServiceResult<usize> {
+    let missing = repository::mesh_metadata::threemf_assets_missing(pool).await?;
+    let mut done = 0usize;
+    for (asset_id, rel) in missing {
+        let abs = library.absolute(Path::new(&rel));
+        if !abs.exists() {
+            continue;
+        }
+        let object_id = match repository::objects::object_id_for_asset(pool, asset_id).await? {
+            Some(id) => id,
+            None => continue,
+        };
+        if store_threemf(pool, library, object_id, asset_id, &abs).await {
             done += 1;
         }
     }
@@ -672,9 +800,9 @@ pub async fn attach_existing_gcode(
     Ok((asset, metadata))
 }
 
-/// Register an already-on-disk model file (`.stl`, `.obj`, `.step`, …) as a
-/// `StlPart`. Mesh geometry is computed for the formats the parser understands
-/// (STL/OBJ today); other kinds are attached without it.
+/// Register an already-on-disk model file (`.stl`, `.obj`, `.step`, `.3mf`) as a
+/// `StlPart`. Geometry (and, for 3MF, units/metadata/thumbnail) is computed for
+/// the formats the parser understands; other kinds are attached without it.
 pub async fn attach_existing_model(
     pool: &SqlitePool,
     library: &Library,
@@ -686,7 +814,7 @@ pub async fn attach_existing_model(
     let asset = attach_existing_inner(pool, library, abs, kind, mime, None).await?;
     let next_sort = next_sort_order(pool, object_id, ObjectAssetRole::StlPart).await? as i64;
     repository::objects::attach_asset(pool, object_id, asset.id, ObjectAssetRole::StlPart, next_sort).await?;
-    store_mesh_metadata(pool, asset.id, abs, kind).await;
+    store_model_derived(pool, library, object_id, asset.id, abs, kind).await;
     repository::objects::touch(pool, object_id).await?;
     Ok(asset)
 }
@@ -844,7 +972,7 @@ fn classify_model_kind(p: &Path) -> AssetKind {
     match p.extension().and_then(|e| e.to_str()).map(|s| s.to_ascii_lowercase()).as_deref() {
         Some("obj") => AssetKind::Obj,
         Some("step") | Some("stp") => AssetKind::Step,
-        Some("3mf") => AssetKind::Cad,
+        Some("3mf") => AssetKind::ThreeMf,
         _ => AssetKind::Stl,
     }
 }

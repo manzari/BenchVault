@@ -563,7 +563,7 @@ async renderScadPreview(assetId: AssetId) : Promise<Result<number[], AppError>> 
 export type AppError = { code: string; message: string }
 export type Asset = { id: AssetId; kind: AssetKind; relative_path: string; original_filename: string; mime_type: string | null; size_bytes: number | null; sha256: string | null; metadata_json: string | null; created_at: number; updated_at: number; deleted_at: number | null }
 export type AssetId = number
-export type AssetKind = "stl" | "gcode" | "image" | "cad" | "scad" | "obj" | "step" | "cadquery" | "markdown" | "other"
+export type AssetKind = "stl" | "gcode" | "image" | "cad" | "scad" | "obj" | "step" | "cadquery" | "threemf" | "markdown" | "other"
 /**
  * An asset attached to an object plus role + sort info plus type-specific metadata.
  */

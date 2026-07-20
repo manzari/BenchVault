@@ -63,6 +63,25 @@ pub async fn mesh_assets_missing(pool: &SqlitePool) -> sqlx::Result<Vec<(AssetId
         .collect())
 }
 
+/// `.3mf` assets with no `mesh_metadata` row yet, as (id, relative_path) pairs,
+/// for the 3MF backfill. Kept separate from [`mesh_assets_missing`] because 3MF
+/// derivation also needs the owning object (for the thumbnail cover), which that
+/// object-agnostic path doesn't resolve.
+pub async fn threemf_assets_missing(pool: &SqlitePool) -> sqlx::Result<Vec<(AssetId, String)>> {
+    let rows = sqlx::query(
+        "SELECT a.id, a.relative_path
+           FROM assets a
+           LEFT JOIN mesh_metadata mm ON mm.asset_id = a.id
+          WHERE a.kind = 'threemf' AND a.deleted_at IS NULL AND mm.asset_id IS NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| (AssetId(r.get::<i64, _>("id")), r.get::<String, _>("relative_path")))
+        .collect())
+}
+
 /// `.scad` assets with no `mesh_metadata` row yet, as asset ids, for the
 /// render-backed geometry backfill. (STL/OBJ parse from the file directly and go
 /// through [`mesh_assets_missing`]; SCAD needs an OpenSCAD render first.)

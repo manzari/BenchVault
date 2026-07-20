@@ -31,6 +31,33 @@ interface Props {
   onCoverChanged?: () => void;
 }
 
+interface ThreeMfMeta {
+  title?: string;
+  designer?: string;
+  license?: string;
+  units?: string;
+}
+
+/** Pull the 3MF document metadata BenchVault stashed in `assets.metadata_json`. */
+function threeMfMeta(a: AttachedAsset["asset"]): ThreeMfMeta | null {
+  if (a.kind !== "threemf" || !a.metadata_json) return null;
+  try {
+    const j = JSON.parse(a.metadata_json) as {
+      units?: string | null;
+      metadata?: Record<string, string>;
+    };
+    const md = j.metadata ?? {};
+    return {
+      title: md.Title,
+      designer: md.Designer,
+      license: md.LicenseTerms,
+      units: j.units ?? undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function StlPartsList({ objectId, parts, onMutated, onCoverChanged }: Props) {
   const setCoverFromPart = async (p: AttachedAsset) => {
     const res = await withErrorToast(
@@ -120,6 +147,8 @@ export function StlPartsList({ objectId, parts, onMutated, onCoverChanged }: Pro
               {parts.map((p, i) => {
                 const m = p.mesh_metadata;
                 const tris = formatTriangleCount(m?.triangle_count);
+                const tmf = threeMfMeta(p.asset);
+                const showUnits = tmf?.units && tmf.units !== "millimeter";
                 return (
                 <Table.Tr key={p.asset.id}>
                   <Table.Td>
@@ -131,6 +160,17 @@ export function StlPartsList({ objectId, parts, onMutated, onCoverChanged }: Pro
                     <Text size="sm" truncate fw={500}>
                       {p.asset.original_filename}
                     </Text>
+                    {tmf && (tmf.title || tmf.designer || tmf.license) && (
+                      <Text size="xs" c="dimmed" truncate>
+                        {[
+                          tmf.title,
+                          tmf.designer && `by ${tmf.designer}`,
+                          tmf.license,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </Text>
+                    )}
                     {m && (tris || m.is_watertight != null) && (
                       <Text size="xs" c="dimmed">
                         {[
@@ -150,6 +190,11 @@ export function StlPartsList({ objectId, parts, onMutated, onCoverChanged }: Pro
                     <Text size="sm" ff="monospace">
                       {formatDimensions(m?.bbox_x_mm, m?.bbox_y_mm, m?.bbox_z_mm)}
                     </Text>
+                    {showUnits && (
+                      <Text size="xs" c="dimmed">
+                        source: {tmf!.units}
+                      </Text>
+                    )}
                   </Table.Td>
                   <Table.Td>
                     <Text size="sm" ff="monospace">
