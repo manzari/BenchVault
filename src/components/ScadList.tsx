@@ -27,7 +27,7 @@ import type { AttachedAsset } from "../lib/types";
 import { api } from "../lib/api";
 import { notifyError, withErrorToast } from "../lib/errors";
 import { renderStlToPng } from "../lib/stlRender";
-import { formatBytes } from "../lib/format";
+import { formatBytes, formatDimensions, formatTriangleCount, formatVolume } from "../lib/format";
 import {
   groupScadParameters,
   parseScadMetadata,
@@ -161,6 +161,22 @@ export function ScadList({ objectId, scads, onMutated, onCoverChanged, onPreview
                 const summary = scadSummary(meta);
                 const hasDetail = scadHasDetail(meta);
                 const isOpen = expanded.has(p.asset.id);
+                const m = p.mesh_metadata;
+                const tris = formatTriangleCount(m?.triangle_count);
+                const geom = m
+                  ? [
+                      formatDimensions(m.bbox_x_mm, m.bbox_y_mm, m.bbox_z_mm),
+                      formatVolume(m.volume_mm3),
+                      tris ? `△ ${tris}` : null,
+                      m.is_watertight == null
+                        ? null
+                        : m.is_watertight
+                          ? "watertight"
+                          : "not watertight",
+                    ]
+                      .filter((x) => x && x !== "—")
+                      .join(" · ")
+                  : "";
                 return (
                 <Fragment key={p.asset.id}>
                 <Table.Tr>
@@ -199,6 +215,11 @@ export function ScadList({ objectId, scads, onMutated, onCoverChanged, onPreview
                             {p.asset.kind === "cadquery" ? "CadQuery" : "OpenSCAD"}
                           </Badge>
                         </Group>
+                        {geom && (
+                          <Text size="xs" c="dimmed" ff="monospace">
+                            {geom}
+                          </Text>
+                        )}
                         {summary && (
                           <Text size="xs" c="dimmed">
                             {summary}

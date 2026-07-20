@@ -63,6 +63,21 @@ pub async fn mesh_assets_missing(pool: &SqlitePool) -> sqlx::Result<Vec<(AssetId
         .collect())
 }
 
+/// `.scad` assets with no `mesh_metadata` row yet, as asset ids, for the
+/// render-backed geometry backfill. (STL/OBJ parse from the file directly and go
+/// through [`mesh_assets_missing`]; SCAD needs an OpenSCAD render first.)
+pub async fn scad_geometry_missing(pool: &SqlitePool) -> sqlx::Result<Vec<AssetId>> {
+    let rows = sqlx::query(
+        "SELECT a.id
+           FROM assets a
+           LEFT JOIN mesh_metadata mm ON mm.asset_id = a.id
+          WHERE a.kind = 'scad' AND a.deleted_at IS NULL AND mm.asset_id IS NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|r| AssetId(r.get::<i64, _>("id"))).collect())
+}
+
 pub async fn get(pool: &SqlitePool, asset_id: AssetId) -> sqlx::Result<Option<MeshMetadata>> {
     let row = sqlx::query("SELECT * FROM mesh_metadata WHERE asset_id = ?")
         .bind(asset_id.0)
