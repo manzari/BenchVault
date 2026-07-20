@@ -418,6 +418,25 @@ pub async fn asset_ids_for_object(pool: &SqlitePool, object_id: ObjectId) -> sql
     Ok(rows.into_iter().map(|r| AssetId(r.get::<i64, _>("asset_id"))).collect())
 }
 
+/// The object an asset is attached to, if any (first match). Used by the 3MF
+/// backfill to resolve the owner when re-deriving cover/metadata off an asset id.
+pub async fn object_id_for_asset(pool: &SqlitePool, asset_id: AssetId) -> sqlx::Result<Option<ObjectId>> {
+    let row = sqlx::query("SELECT object_id FROM object_assets WHERE asset_id = ? LIMIT 1")
+        .bind(asset_id.0)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.map(|r| ObjectId(r.get::<i64, _>("object_id"))))
+}
+
+/// Whether the object already has a cover image set.
+pub async fn has_cover(pool: &SqlitePool, object_id: ObjectId) -> sqlx::Result<bool> {
+    let row = sqlx::query("SELECT cover_asset_id FROM objects WHERE id = ?")
+        .bind(object_id.0)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.and_then(|r| r.try_get::<Option<i64>, _>("cover_asset_id").ok().flatten()).is_some())
+}
+
 pub async fn detach_asset(pool: &SqlitePool, asset_id: AssetId) -> sqlx::Result<()> {
     sqlx::query("DELETE FROM object_assets WHERE asset_id = ?")
         .bind(asset_id.0)

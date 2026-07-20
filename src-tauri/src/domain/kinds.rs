@@ -15,6 +15,10 @@ pub enum AssetKind {
     // "cad_query", so serde output matches `as_str`/`from_str` and the stored value.
     #[serde(rename = "cadquery")]
     CadQuery,
+    // snake_case would emit "three_mf"; keep the wire/DB string one word to match
+    // `as_str`/`from_str` and the stored value (mirrors `CadQuery` → "cadquery").
+    #[serde(rename = "threemf")]
+    ThreeMf,
     Markdown,
     Other,
 }
@@ -30,6 +34,7 @@ impl AssetKind {
             AssetKind::Obj => "obj",
             AssetKind::Step => "step",
             AssetKind::CadQuery => "cadquery",
+            AssetKind::ThreeMf => "threemf",
             AssetKind::Markdown => "markdown",
             AssetKind::Other => "other",
         }
@@ -45,6 +50,7 @@ impl AssetKind {
             "obj" => AssetKind::Obj,
             "step" => AssetKind::Step,
             "cadquery" => AssetKind::CadQuery,
+            "threemf" => AssetKind::ThreeMf,
             "markdown" => AssetKind::Markdown,
             _ => AssetKind::Other,
         }

@@ -162,6 +162,11 @@ pub fn run() {
                         Ok(n) => eprintln!("[mesh] backfilled geometry for {n} STL(s)"),
                         Err(e) => eprintln!("[mesh] backfill failed: {e}"),
                     }
+                    match service::files::backfill_threemf(&backfill_pool, &backfill_library).await {
+                        Ok(0) => {}
+                        Ok(n) => eprintln!("[3mf] backfilled geometry/metadata for {n} file(s)"),
+                        Err(e) => eprintln!("[3mf] backfill failed: {e}"),
+                    }
                     match service::files::backfill_scad_metadata(&backfill_pool, &backfill_library).await {
                         Ok(0) => {}
                         Ok(n) => eprintln!("[scad] backfilled metadata for {n} source(s)"),

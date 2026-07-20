@@ -254,7 +254,7 @@ async fn ingest_new_file(
         AssetKind::Gcode => {
             service::files::attach_existing_gcode(pool, library, target.object_id, abs).await?;
         }
-        AssetKind::Stl | AssetKind::Obj | AssetKind::Step => {
+        AssetKind::Stl | AssetKind::Obj | AssetKind::Step | AssetKind::ThreeMf => {
             service::files::attach_existing_model(pool, library, target.object_id, abs, kind).await?;
         }
         AssetKind::Scad => {
@@ -440,6 +440,8 @@ fn classify(abs: &Path) -> Option<(AssetKind, ObjectAssetRole)> {
         Some("stl") => Some((AssetKind::Stl, ObjectAssetRole::StlPart)),
         Some("obj") => Some((AssetKind::Obj, ObjectAssetRole::StlPart)),
         Some("step") | Some("stp") => Some((AssetKind::Step, ObjectAssetRole::StlPart)),
+        // 3MF lands in Models (like the picker) so its geometry/metadata is derived.
+        Some("3mf") => Some((AssetKind::ThreeMf, ObjectAssetRole::StlPart)),
         Some("scad") => Some((AssetKind::Scad, ObjectAssetRole::Scad)),
         // A `.py` is only auto-ingested when it sniffs as a CadQuery script;
         // unrelated Python is ignored by the watcher.
@@ -447,7 +449,7 @@ fn classify(abs: &Path) -> Option<(AssetKind, ObjectAssetRole)> {
             Some((AssetKind::CadQuery, ObjectAssetRole::Scad))
         }
         Some("md") | Some("markdown") => Some((AssetKind::Markdown, ObjectAssetRole::Document)),
-        Some("3mf") | Some("iges") | Some("igs") | Some("f3d") | Some("sldprt") => {
+        Some("iges") | Some("igs") | Some("f3d") | Some("sldprt") => {
             Some((AssetKind::Cad, ObjectAssetRole::Attachment))
         }
         Some("png") | Some("jpg") | Some("jpeg") | Some("webp") | Some("gif") | Some("bmp") => {
