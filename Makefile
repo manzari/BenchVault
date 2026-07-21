@@ -30,7 +30,7 @@ install-host: build ## Build the .deb and install/upgrade it on this host
 	$(eval DEB := $(abspath $(wildcard src-tauri/target/release/bundle/deb/*.deb)))
 	@test -n "$(DEB)" || { echo "No .deb found under src-tauri/target/release/bundle/deb/"; exit 1; }
 	@echo "Installing $(DEB)"
-	sudo apt install -y --reinstall "$(DEB)"
+	sudo apt install -o APT::Sandbox::User=root -y --reinstall "$(DEB)"
 
 clean-install-host: ## Full clean rebuild from scratch, then reinstall on this host
 	$(MAKE) clean
@@ -39,7 +39,7 @@ clean-install-host: ## Full clean rebuild from scratch, then reinstall on this h
 	$(eval DEB := $(abspath $(wildcard src-tauri/target/release/bundle/deb/*.deb)))
 	@test -n "$(DEB)" || { echo "No .deb found under src-tauri/target/release/bundle/deb/"; exit 1; }
 	@echo "Installing $(DEB)"
-	sudo apt install -y "$(DEB)"
+	sudo apt install -o APT::Sandbox::User=root -y "$(DEB)"
 
 reinstall: install-host ## Alias for install-host (apt reinstalls/upgrades in place)
 
