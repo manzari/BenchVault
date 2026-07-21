@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>WebGL spike</title>
+<style>
+  body { margin:0; background:#1a1b1e; color:#c1c2c5;
+         font-family: DejaVu Sans, sans-serif; }
+  #info { padding: 8px 12px; font-size: 13px; white-space: pre-wrap; }
+  canvas { display:block; border-top:1px solid #444; }
+</style>
+</head>
+<body>
+<div id="info">running…</div>
+<canvas id="c" width="640" height="400"></canvas>
+<script>
+// Mirrors what @react-three/fiber needs: a real WebGL2 context that draws.
+const out = { ok:false, ctx:null, renderer:null, vendor:null, drew:false, err:null };
+const canvas = document.getElementById('c');
+
+try {
+  let gl = canvas.getContext('webgl2');
+  out.ctx = gl ? 'webgl2' : null;
+  if (!gl) { gl = canvas.getContext('webgl'); out.ctx = gl ? 'webgl1' : null; }
+  if (!gl) throw new Error('no webgl context at all');
+
+  const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+  out.renderer = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)
+                     : gl.getParameter(gl.RENDERER);
+  out.vendor   = dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL)
+                     : gl.getParameter(gl.VENDOR);
+
+  const vs = gl.createShader(gl.VERTEX_SHADER);
+  gl.shaderSource(vs, 'attribute vec2 p; void main(){ gl_Position = vec4(p,0.0,1.0); }');
+  gl.compileShader(vs);
+  if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS))
+    throw new Error('vs: ' + gl.getShaderInfoLog(vs));
+
+  const fs = gl.createShader(gl.FRAGMENT_SHADER);
+  gl.shaderSource(fs, 'precision mediump float; void main(){ gl_FragColor = vec4(0.25,0.72,0.51,1.0); }');
+  gl.compileShader(fs);
+  if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS))
+    throw new Error('fs: ' + gl.getShaderInfoLog(fs));
+
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
+    throw new Error('link: ' + gl.getProgramInfoLog(prog));
+  gl.useProgram(prog);
+
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0,0.8, -0.8,-0.8, 0.8,-0.8]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, 'p');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+  gl.clearColor(0.10, 0.11, 0.12, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  // Read back the centre pixel: proves rasterisation actually happened,
+  // not just that the context and shaders were accepted.
+  const px = new Uint8Array(4);
+  gl.readPixels(320, 200, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  out.pixel = Array.from(px);
+  out.drew = px[1] > 100;
+  out.ok = out.drew;
+} catch (e) {
+  out.err = String(e && e.message || e);
+}
+
+window.__spike = out;
+document.getElementById('info').textContent =
+  'ctx=' + out.ctx + '\nrenderer=' + out.renderer + '\nvendor=' + out.vendor +
+  '\npixel=' + JSON.stringify(out.pixel) + '\ndrew=' + out.drew + '\nerr=' + out.err;
+document.title = out.ok ? 'SPIKE-OK' : 'SPIKE-FAIL';
+</script>
+</body>
+</html>

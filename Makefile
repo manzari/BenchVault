@@ -5,7 +5,8 @@
 .PHONY: help install dev build frontend frontend-build \
         check fmt clippy test bindings clean \
         install-host clean-install-host reinstall uninstall \
-        publish publish-only publish-link
+        publish publish-only publish-link \
+        shots-image spike-webgl spike-tauri seed-bin shots
 
 DEB := $(wildcard src-tauri/target/release/bundle/deb/*.deb)
 
@@ -56,6 +57,41 @@ publish-only: ## Upload the already-built bundles to Codeberg and link them
 
 publish-link: ## Only (re)link the already-uploaded packages to the repo
 	scripts/publish-to-codeberg.sh --link-only
+
+## --- Demo screenshots (headless, in Docker — never touches your real library) ---
+
+BIN := $(abspath src-tauri/target/release/benchvault)
+
+shots-image: ## Build the headless screenshot image
+	docker build -t bv-shots demo/docker
+
+spike-webgl: shots-image ## Verify WebGL renders and screenshots under Xvfb
+	docker run --rm bv-shots
+
+SEED := $(abspath src-tauri/target/release/seed_demo)
+
+seed-bin: ## Build the demo seeder
+	cd src-tauri && cargo build --release --bin seed_demo
+
+shots: shots-image ## Seed a demo library in Docker and capture docs/screenshots/
+	@test -x "$(BIN)" || { echo "No release binary — run 'make build' first"; exit 1; }
+	@test -x "$(SEED)" || { echo "No seeder — run 'make seed-bin' first"; exit 1; }
+	docker rm -f bv-shots-run >/dev/null 2>&1 || true
+	docker run --name bv-shots-run \
+		-v "$(BIN)":/app/benchvault:ro -v "$(SEED)":/app/seed_demo:ro \
+		--entrypoint /spike/run-shots.sh bv-shots
+	mkdir -p docs/screenshots
+	docker cp bv-shots-run:/out/. docs/screenshots/
+	docker rm -f bv-shots-run >/dev/null
+
+spike-tauri: shots-image ## Drive the real binary through tauri-driver
+	@test -x "$(BIN)" || { echo "No release binary — run 'make build' first"; exit 1; }
+	docker rm -f bv-shots-run >/dev/null 2>&1 || true
+	docker run --name bv-shots-run -v "$(BIN)":/app/benchvault:ro \
+		--entrypoint /spike/run-tauri-spike.sh bv-shots
+	mkdir -p docs/screenshots
+	docker cp bv-shots-run:/out/tauri-spike.png docs/screenshots/
+	docker rm -f bv-shots-run >/dev/null
 
 ## --- Frontend only (most invoke() calls fail without the Tauri shell) ---
 
