@@ -26,6 +26,14 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE_DIR="$REPO_ROOT/src-tauri/target/release/bundle"
 
+# Load .env from the repo root (variables there may lack `export`).
+if [[ -f "$REPO_ROOT/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$REPO_ROOT/.env"
+  set +a
+fi
+
 BUILD=1
 UPLOAD=1
 case "${1:-}" in
