@@ -238,11 +238,7 @@ pub async fn get_full(pool: &SqlitePool, id: ObjectId) -> sqlx::Result<ObjectFul
             updated_at: r.get("updated_at"),
             deleted_at: r.try_get("deleted_at").ok(),
         };
-        let role = match r.get::<&str, _>("oa_role") {
-            "stl_part" => ObjectAssetRole::StlPart,
-            "gcode" => ObjectAssetRole::Gcode,
-            _ => ObjectAssetRole::Attachment,
-        };
+        let role = ObjectAssetRole::from_str(r.get::<&str, _>("oa_role"));
         let gm = if matches!(role, ObjectAssetRole::Gcode) {
             Some(GcodeMetadata {
                 asset_id: asset.id,

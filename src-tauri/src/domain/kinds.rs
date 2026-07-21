@@ -98,4 +98,14 @@ impl ObjectAssetRole {
             ObjectAssetRole::Attachment => "attachment",
         }
     }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "stl_part" => ObjectAssetRole::StlPart,
+            "gcode" => ObjectAssetRole::Gcode,
+            "scad" => ObjectAssetRole::Scad,
+            "document" => ObjectAssetRole::Document,
+            _ => ObjectAssetRole::Attachment,
+        }
+    }
 }
