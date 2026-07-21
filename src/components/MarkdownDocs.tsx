@@ -64,7 +64,7 @@ export function MarkdownDocs({ objectId, docs, onMutated }: Props) {
     try {
       selected = await open({
         multiple: true,
-        filters: [{ name: "Markdown", extensions: ["md", "markdown"] }],
+        filters: [{ name: "Documents", extensions: ["md", "markdown", "txt"] }],
       });
     } catch (e) {
       notifyError("Could not open file picker", e);
@@ -107,7 +107,7 @@ export function MarkdownDocs({ objectId, docs, onMutated }: Props) {
           bare
           icon={<IconFileText size={28} />}
           title="No docs yet"
-          description="Drop a .md file onto this object, or use the Add doc button."
+          description="Drop a .md or .txt file onto this object, or use the Add doc button."
         />
       ) : (
         <Accordion variant="separated" value={open_} onChange={setOpen}>
@@ -136,6 +136,15 @@ export function MarkdownDocs({ objectId, docs, onMutated }: Props) {
                   <Group justify="center" py="md">
                     <Loader size="sm" />
                   </Group>
+                ) : p.asset.kind === "text" ? (
+                  <Text
+                    component="pre"
+                    size="sm"
+                    ff="monospace"
+                    style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0 }}
+                  >
+                    {content.get(p.asset.id) ?? ""}
+                  </Text>
                 ) : (
                   <TypographyStylesProvider>
                     <Markdown remarkPlugins={[remarkGfm]}>{content.get(p.asset.id) ?? ""}</Markdown>

@@ -449,6 +449,7 @@ fn classify(abs: &Path) -> Option<(AssetKind, ObjectAssetRole)> {
             Some((AssetKind::CadQuery, ObjectAssetRole::Scad))
         }
         Some("md") | Some("markdown") => Some((AssetKind::Markdown, ObjectAssetRole::Document)),
+        Some("txt") => Some((AssetKind::Text, ObjectAssetRole::Document)),
         Some("iges") | Some("igs") | Some("f3d") | Some("sldprt") => {
             Some((AssetKind::Cad, ObjectAssetRole::Attachment))
         }

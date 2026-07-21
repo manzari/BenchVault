@@ -289,16 +289,22 @@ pub async fn add_cadquery(
     Ok(asset)
 }
 
-/// Copy a Markdown document into the managed library, attaching it with the
-/// `document` role so it renders in the object's "Docs / Notes" section.
+/// Copy a text document (Markdown or plain `.txt`) into the managed library,
+/// attaching it with the `document` role so it renders in the object's
+/// "Docs / Notes" section. The kind drives whether the frontend renders it as
+/// Markdown or verbatim.
 pub async fn add_doc(
     pool: &SqlitePool,
     library: &Library,
     object_id: ObjectId,
     source: &Path,
 ) -> ServiceResult<Asset> {
+    let kind = match source.extension().and_then(|e| e.to_str()).map(|s| s.to_ascii_lowercase()).as_deref() {
+        Some("txt") => AssetKind::Text,
+        _ => AssetKind::Markdown,
+    };
     let asset =
-        ingest_file(pool, library, object_id, source, AssetKind::Markdown, mime_for_path(source)).await?;
+        ingest_file(pool, library, object_id, source, kind, mime_for_path(source)).await?;
     let next_sort = next_sort_order(pool, object_id, ObjectAssetRole::Document).await? as i64;
     repository::objects::attach_asset(pool, object_id, asset.id, ObjectAssetRole::Document, next_sort).await?;
     repository::objects::touch(pool, object_id).await?;
@@ -451,7 +457,7 @@ pub async fn add_attachment(
         "stl" | "obj" | "step" | "stp" | "3mf" => {
             return add_stl(pool, library, object_id, source).await
         }
-        "md" | "markdown" => return add_doc(pool, library, object_id, source).await,
+        "md" | "markdown" | "txt" => return add_doc(pool, library, object_id, source).await,
         "py" if is_cadquery_py(source) => {
             return add_cadquery(pool, library, object_id, source).await
         }

@@ -58,11 +58,12 @@ Everything you import is stored as a plain file in the managed library. The tabl
 | **OpenSCAD** (`.scad`) |   ✅   |  ✅ static  | ✅ via render | ✅ |     —      |
 | **CadQuery** (`.py`) |   ✅   |      —      |       —       | — |     —      |
 | **Markdown** (`.md`, `.markdown`) |   ✅   |      —      |   ✅ via render    | ✅ |     —      |
+| **Text** (`.txt`) |   ✅   |      —      |   ✅ verbatim    | — |     —      |
 | CAD / STEP (`.step`, `.stp`, `.iges`, `.igs`, `.f3d`, `.sldprt`) |   ✅   |      —      |       —       | — |     —      |
 | Images (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.bmp`, `.svg`) |   ✅   |      —      |       —       | — |     —      |
-| Anything else (`.pdf`, `.txt`, `.zip`, …) |   ✅   |      —      |       —       | — |     —      |
+| Anything else (`.pdf`, `.zip`, …) |   ✅   |      —      |       —       | — |     —      |
 
-Models (STL/OBJ/STEP/3MF) share one **Models** section; STL and OBJ render directly in the in-app 3D viewer, while STEP and 3MF are stored and listed (3MF still gets its geometry and metadata parsed on import). OpenSCAD and CadQuery scripts share a **CAD Scripts** section (OpenSCAD sources also render to a previewable mesh, and their parameters/dependencies are listed). Markdown files render as formatted notes in a **Docs / Notes** section. Images double as object cover art (snapshot the 3D viewer, set any imported image, or let a 3MF's embedded thumbnail fill in). STL parts are the only assets sent to OrcaSlicer.
+Models (STL/OBJ/STEP/3MF) share one **Models** section; STL and OBJ render directly in the in-app 3D viewer, while STEP and 3MF are stored and listed (3MF still gets its geometry and metadata parsed on import). OpenSCAD and CadQuery scripts share a **CAD Scripts** section (OpenSCAD sources also render to a previewable mesh, and their parameters/dependencies are listed). Markdown files render as formatted notes in a **Docs / Notes** section, and plain `.txt` files render verbatim there too. Images double as object cover art (snapshot the 3D viewer, set any imported image, or let a 3MF's embedded thumbnail fill in). STL parts are the only assets sent to OrcaSlicer.
 ## Stack
 
 - **Tauri 2** — Rust backend + system webview

@@ -20,6 +20,7 @@ pub enum AssetKind {
     #[serde(rename = "threemf")]
     ThreeMf,
     Markdown,
+    Text,
     Other,
 }
 
@@ -36,6 +37,7 @@ impl AssetKind {
             AssetKind::CadQuery => "cadquery",
             AssetKind::ThreeMf => "threemf",
             AssetKind::Markdown => "markdown",
+            AssetKind::Text => "text",
             AssetKind::Other => "other",
         }
     }
@@ -52,6 +54,7 @@ impl AssetKind {
             "cadquery" => AssetKind::CadQuery,
             "threemf" => AssetKind::ThreeMf,
             "markdown" => AssetKind::Markdown,
+            "text" => AssetKind::Text,
             _ => AssetKind::Other,
         }
     }
