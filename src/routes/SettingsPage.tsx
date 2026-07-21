@@ -21,17 +21,48 @@ import {
   IconBrandThingiverse,
   IconCube,
   IconFileCode,
+  IconInfoCircle,
   IconRefresh,
   IconScissors,
   IconUsb,
   IconWand,
 } from "@tabler/icons-react";
+import { getVersion } from "@tauri-apps/api/app";
 import { open as openDialog, ask } from "@tauri-apps/plugin-dialog";
 import { useEffect, useMemo, useState } from "react";
 import type { MountedDrive } from "../lib/types";
 import { api } from "../lib/api";
 import { useUsbStore } from "../lib/stores/usb";
 import { useUiStore } from "../lib/stores/ui";
+
+function AboutCard() {
+  const [version, setVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    getVersion()
+      .then(setVersion)
+      .catch(() => setVersion(null));
+  }, []);
+
+  return (
+    <Paper withBorder p="md">
+      <Stack gap="md">
+        <Group gap="sm" align="center">
+          <IconInfoCircle size={20} />
+          <Title order={4} m={0}>
+            About
+          </Title>
+        </Group>
+        <Group justify="space-between">
+          <Text size="sm">BenchVault</Text>
+          <Badge variant="light" color="gray">
+            v{version ?? "…"}
+          </Badge>
+        </Group>
+      </Stack>
+    </Paper>
+  );
+}
 
 export function SettingsPage() {
   const target = useUsbStore((s) => s.target);
@@ -193,6 +224,8 @@ export function SettingsPage() {
       <KobraCleanCard />
 
       <StlPreviewCard />
+
+      <AboutCard />
 
       <Paper withBorder p="md">
         <Stack gap="md">
