@@ -19,7 +19,7 @@ import {
   IconTrash,
   IconX,
 } from "@tabler/icons-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { notifications } from "@mantine/notifications";
 import { open, ask } from "@tauri-apps/plugin-dialog";
 import Markdown from "react-markdown";
@@ -33,10 +33,12 @@ import { EmptyState } from "./EmptyState";
 interface Props {
   objectId: number;
   docs: AttachedAsset[];
+  /** Image assets on the same object, used to resolve inline markdown images. */
+  images: AttachedAsset[];
   onMutated: () => void;
 }
 
-export function MarkdownDocs({ objectId, docs, onMutated }: Props) {
+export function MarkdownDocs({ objectId, docs, images, onMutated }: Props) {
   // The currently expanded doc, and a cache of already-loaded markdown text.
   const [open_, setOpen] = useState<string | null>(null);
   const [content, setContent] = useState<Map<number, string>>(() => new Map());
@@ -230,7 +232,18 @@ export function MarkdownDocs({ objectId, docs, onMutated }: Props) {
                       </Text>
                     ) : (
                       <TypographyStylesProvider>
-                        <Markdown remarkPlugins={[remarkGfm]}>
+                        <Markdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            img: ({ src, alt }) => (
+                              <MarkdownImage
+                                src={typeof src === "string" ? src : undefined}
+                                alt={alt}
+                                images={images}
+                              />
+                            ),
+                          }}
+                        >
                           {content.get(p.asset.id) ?? ""}
                         </Markdown>
                       </TypographyStylesProvider>
@@ -249,4 +262,69 @@ export function MarkdownDocs({ objectId, docs, onMutated }: Props) {
 function baseName(p: string): string {
   const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
   return i >= 0 ? p.slice(i + 1) : p;
+}
+
+/** Match a markdown image reference to a sibling image asset by filename. */
+function resolveImageAsset(
+  src: string | undefined,
+  images: AttachedAsset[],
+): AttachedAsset | null {
+  if (!src) return null;
+  const clean = decodeURIComponent(src.split(/[?#]/)[0]);
+  const base = (clean.split(/[/\\]/).pop() ?? "").toLowerCase();
+  if (!base) return null;
+  return images.find((a) => a.asset.original_filename.toLowerCase() === base) ?? null;
+}
+
+/**
+ * Render an inline markdown image. Remote/data URLs pass through; a relative
+ * reference is resolved to an object image asset and loaded as a blob URL
+ * (the webview can't read the managed library path directly).
+ */
+function MarkdownImage({
+  src,
+  alt,
+  images,
+}: {
+  src?: string;
+  alt?: string;
+  images: AttachedAsset[];
+}) {
+  const isExternal = !!src && /^(https?:|data:)/i.test(src);
+  const match = useMemo(
+    () => (isExternal ? null : resolveImageAsset(src, images)),
+    [src, images, isExternal],
+  );
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!match) return;
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    api
+      .readAssetBytes(match.asset.id)
+      .then((bytes) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(
+          new Blob([new Uint8Array(bytes)], { type: match.asset.mime_type ?? undefined }),
+        );
+        setUrl(objectUrl);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [match?.asset.id]);
+
+  if (isExternal) return <img src={src} alt={alt ?? ""} style={{ maxWidth: "100%" }} />;
+  if (!match) {
+    return (
+      <Text component="span" c="dimmed" size="xs" fs="italic">
+        [missing image: {src}]
+      </Text>
+    );
+  }
+  if (!url) return <Loader size="xs" />;
+  return <img src={url} alt={alt ?? ""} style={{ maxWidth: "100%" }} />;
 }

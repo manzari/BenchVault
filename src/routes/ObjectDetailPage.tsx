@@ -564,7 +564,12 @@ export function ObjectDetailPage() {
       {/* Docs / Notes (rendered markdown; only when present) */}
       {docs.length > 0 && (
         <Paper withBorder p="md">
-          <MarkdownDocs objectId={id} docs={docs} onMutated={load} />
+          <MarkdownDocs
+            objectId={id}
+            docs={docs}
+            images={data.assets.filter((a) => a.asset.kind === "image")}
+            onMutated={load}
+          />
         </Paper>
       )}
 
