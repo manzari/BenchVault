@@ -171,12 +171,18 @@ async fn store_mesh_metadata(pool: &SqlitePool, asset_id: AssetId, path: &Path, 
 pub async fn backfill_mesh_metadata(pool: &SqlitePool, library: &Library) -> ServiceResult<usize> {
     let missing = repository::mesh_metadata::mesh_assets_missing(pool).await?;
     let mut done = 0usize;
-    for (asset_id, rel, kind_str) in missing {
+    for (asset_id, rel) in missing {
         let abs = library.absolute(Path::new(&rel));
         if !abs.exists() {
             continue;
         }
-        if store_mesh_metadata(pool, asset_id, &abs, AssetKind::from_str(&kind_str)).await {
+        // Trust the extension over a stale DB kind: pre-`threemf` rows are stored
+        // as 'stl' and would otherwise be fed to the STL parser as a ZIP.
+        let kind = match classify_model_kind(&abs) {
+            k @ (AssetKind::Stl | AssetKind::Obj) => k,
+            _ => continue,
+        };
+        if store_mesh_metadata(pool, asset_id, &abs, kind).await {
             done += 1;
         }
     }

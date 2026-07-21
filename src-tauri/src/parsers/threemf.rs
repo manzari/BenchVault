@@ -6,6 +6,11 @@
 //! metadata, object names, an embedded thumbnail, and a slicer project-settings
 //! part are pulled in the same pass.
 //!
+//! Packages written by BambuStudio/OrcaSlicer use the OPC production extension:
+//! the core part is a stub whose objects carry `p:path="/3D/Objects/x.model"` and
+//! the real meshes live in those separate parts. Any referenced part is streamed
+//! into the same accumulator, so geometry lands either way.
+//!
 //! First cut: every object's mesh is aggregated at identity transform (the common
 //! single-object case). Build-item / nested `<component>` transforms are not yet
 //! composed — multi-part assemblies may under-count until that lands.
@@ -42,21 +47,41 @@ pub fn parse_path(path: &Path) -> std::io::Result<ThreeMfParsed> {
     let names: Vec<String> = zip.file_names().map(|s| s.to_string()).collect();
     let model_name = model_part_name(&names);
 
-    let mut parsed = parse_model(&mut zip, &model_name)?;
+    let mut acc = MeshAccumulator::default();
+    let mut parsed = ThreeMfParsed::default();
+    let parts = parse_model(&mut zip, &model_name, &mut acc, &mut parsed)?;
+
+    // Production extension: pull geometry from every referenced part. Names and
+    // metadata stay whatever the core part declared, so the sub-parts write into
+    // a scratch sink; only their triangles matter.
+    for part in parts {
+        if part == model_name {
+            continue;
+        }
+        let mut sink = ThreeMfParsed::default();
+        let _ = parse_model(&mut zip, &part, &mut acc, &mut sink);
+    }
+    parsed.stats = acc.finish();
+
     parsed.thumbnail = read_thumbnail(&mut zip, &names);
     parsed.slicer_config = read_slicer_config(&mut zip, &names);
     Ok(parsed)
 }
 
-/// Stream the core model part, accumulating geometry (converted to mm) plus
-/// document metadata and object names.
-fn parse_model(zip: &mut Zip, model_name: &str) -> std::io::Result<ThreeMfParsed> {
+/// Stream one model part into `acc`, collecting document metadata and object names
+/// into `out`. Returns the zip paths of any external model parts it references via
+/// the production extension's `p:path`, deduped and in first-seen order.
+fn parse_model(
+    zip: &mut Zip,
+    model_name: &str,
+    acc: &mut MeshAccumulator,
+    out: &mut ThreeMfParsed,
+) -> std::io::Result<Vec<String>> {
     let entry = zip.by_name(model_name).map_err(zip_io_err)?;
     let mut reader = Reader::from_reader(BufReader::new(entry));
     reader.config_mut().trim_text(true);
 
-    let mut acc = MeshAccumulator::default();
-    let mut out = ThreeMfParsed::default();
+    let mut parts: Vec<String> = Vec::new();
     let mut scale = 1.0_f64; // to millimeters
     let mut verts: Vec<[f64; 3]> = Vec::new(); // current object's vertices
     let mut meta_name: Option<String> = None; // open <metadata name=..>
@@ -67,6 +92,14 @@ fn parse_model(zip: &mut Zip, model_name: &str) -> std::io::Result<ThreeMfParsed
         match reader.read_event_into(&mut buf) {
             Ok(Event::Eof) => break,
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
+                // `p:path` appears on <object> and on <build><item>; take it from
+                // whichever element carries it.
+                if let Some(p) = attr(&e, b"path") {
+                    let p = p.trim_start_matches('/').to_string();
+                    if p.to_ascii_lowercase().ends_with(".model") && !parts.contains(&p) {
+                        parts.push(p);
+                    }
+                }
                 match local_name(e.name().as_ref()) {
                     b"model" => {
                         if let Some(u) = attr(&e, b"unit") {
@@ -132,8 +165,7 @@ fn parse_model(zip: &mut Zip, model_name: &str) -> std::io::Result<ThreeMfParsed
         buf.clear();
     }
 
-    out.stats = acc.finish();
-    Ok(out)
+    Ok(parts)
 }
 
 /// Scale factor from a 3MF `unit` value to millimeters. Unknown → 1.0 (treat as mm).
@@ -276,6 +308,21 @@ mod tests {
         )
     }
 
+    /// The BambuStudio/Orca shape: a core part with no geometry whose object
+    /// points at an external part via the production extension's `p:path`.
+    fn split_model() -> (String, String) {
+        let core = r#"<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06">
+  <metadata name="Title">Widget</metadata>
+  <resources>
+    <object id="2" p:path="/3D/Objects/body.model" name="body" type="model"/>
+  </resources>
+  <build><item objectid="2" p:path="/3D/Objects/body.model"/></build>
+</model>"#;
+        // The part carries the mesh under its own <model unit=..> root.
+        (core.to_string(), box_model("millimeter"))
+    }
+
     struct Extra {
         thumbnail: Option<&'static [u8]>,
         config: Option<&'static str>,
@@ -306,6 +353,26 @@ mod tests {
 
         zw.finish().unwrap();
         tmp
+    }
+
+    #[test]
+    fn production_extension_geometry_pulled_from_referenced_part() {
+        let (core, part) = split_model();
+        let tmp = tempfile::Builder::new().suffix(".3mf").tempfile().unwrap();
+        let mut zw = zip::ZipWriter::new(tmp.reopen().unwrap());
+        let opts = SimpleFileOptions::default();
+        zw.start_file("3D/3dmodel.model", opts).unwrap();
+        zw.write_all(core.as_bytes()).unwrap();
+        zw.start_file("3D/Objects/body.model", opts).unwrap();
+        zw.write_all(part.as_bytes()).unwrap();
+        zw.finish().unwrap();
+
+        let p = parse_path(tmp.path()).unwrap();
+        assert_eq!(p.stats.triangle_count, 12);
+        assert_eq!(p.stats.bbox, [2.0, 3.0, 4.0]);
+        // Core-part metadata survives; the sub-part must not clobber it.
+        assert_eq!(p.metadata.get("Title").map(String::as_str), Some("Widget"));
+        assert_eq!(p.object_names, vec!["body"]);
     }
 
     #[test]
