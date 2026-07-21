@@ -311,6 +311,33 @@ pub async fn add_doc(
     Ok(asset)
 }
 
+/// Overwrite an editable document (Markdown or plain `.txt`) in place with new
+/// UTF-8 content, refreshing its size + hash and touching the parent object.
+/// Rejects any other asset kind so a binary model/gcode can never be clobbered.
+pub async fn write_doc(
+    pool: &SqlitePool,
+    library: &Library,
+    asset_id: AssetId,
+    content: &str,
+) -> ServiceResult<()> {
+    let asset = repository::assets::get(pool, asset_id).await?;
+    if !matches!(asset.kind, AssetKind::Markdown | AssetKind::Text) {
+        return Err(ServiceError::Validation(format!(
+            "asset {} is not an editable document",
+            asset_id.0
+        )));
+    }
+    let abs = library.absolute(Path::new(&asset.relative_path));
+    let bytes = content.as_bytes();
+    std::fs::write(&abs, bytes)?;
+    let sha = sha256_bytes(bytes);
+    repository::assets::update_size_sha(pool, asset_id, bytes.len() as i64, Some(&sha)).await?;
+    if let Some(object_id) = repository::objects::object_id_for_asset(pool, asset_id).await? {
+        repository::objects::touch(pool, object_id).await?;
+    }
+    Ok(())
+}
+
 /// Copy an OpenSCAD source into the managed library, attaching it with the `scad`
 /// role so it gets its own section and preview action (mirrors [`add_stl`]).
 pub async fn add_scad(

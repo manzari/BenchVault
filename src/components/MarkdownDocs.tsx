@@ -6,12 +6,21 @@ import {
   Loader,
   Stack,
   Text,
+  Textarea,
   Title,
   Tooltip,
   TypographyStylesProvider,
 } from "@mantine/core";
-import { IconFileText, IconPlus, IconTrash } from "@tabler/icons-react";
+import {
+  IconDeviceFloppy,
+  IconFileText,
+  IconPencil,
+  IconPlus,
+  IconTrash,
+  IconX,
+} from "@tabler/icons-react";
 import { useEffect, useState } from "react";
+import { notifications } from "@mantine/notifications";
 import { open, ask } from "@tauri-apps/plugin-dialog";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -32,8 +41,39 @@ export function MarkdownDocs({ objectId, docs, onMutated }: Props) {
   const [open_, setOpen] = useState<string | null>(null);
   const [content, setContent] = useState<Map<number, string>>(() => new Map());
   const [loading, setLoading] = useState(false);
+  // The doc currently being edited, its working text, and the in-flight save.
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const activeId = open_ != null ? Number(open_) : null;
+
+  const startEdit = (id: number) => {
+    setDraft(content.get(id) ?? "");
+    setEditingId(id);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setDraft("");
+  };
+
+  const save = async (p: AttachedAsset) => {
+    setSaving(true);
+    const res = await withErrorToast("Could not save document", () =>
+      api.writeDoc(p.asset.id, draft),
+    );
+    setSaving(false);
+    if (!res.ok) return;
+    setContent((prev) => new Map(prev).set(p.asset.id, draft));
+    setEditingId(null);
+    notifications.show({
+      color: "green",
+      title: "Saved",
+      message: `Updated ${p.asset.original_filename}.`,
+    });
+    onMutated();
+  };
 
   // Lazily fetch the expanded doc's text through the same read_asset_bytes IPC
   // the STL viewer uses, decoding the bytes to UTF-8.
@@ -136,19 +176,66 @@ export function MarkdownDocs({ objectId, docs, onMutated }: Props) {
                   <Group justify="center" py="md">
                     <Loader size="sm" />
                   </Group>
-                ) : p.asset.kind === "text" ? (
-                  <Text
-                    component="pre"
-                    size="sm"
-                    ff="monospace"
-                    style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0 }}
-                  >
-                    {content.get(p.asset.id) ?? ""}
-                  </Text>
+                ) : editingId === p.asset.id ? (
+                  <Stack gap="xs">
+                    <Textarea
+                      value={draft}
+                      onChange={(e) => setDraft(e.currentTarget.value)}
+                      autosize
+                      minRows={8}
+                      maxRows={28}
+                      spellCheck={false}
+                      styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
+                    />
+                    <Group justify="flex-end" gap="xs">
+                      <Button
+                        size="xs"
+                        variant="default"
+                        leftSection={<IconX size={14} />}
+                        onClick={cancelEdit}
+                        disabled={saving}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="xs"
+                        leftSection={<IconDeviceFloppy size={14} />}
+                        onClick={() => save(p)}
+                        loading={saving}
+                      >
+                        Save
+                      </Button>
+                    </Group>
+                  </Stack>
                 ) : (
-                  <TypographyStylesProvider>
-                    <Markdown remarkPlugins={[remarkGfm]}>{content.get(p.asset.id) ?? ""}</Markdown>
-                  </TypographyStylesProvider>
+                  <Stack gap="xs">
+                    <Group justify="flex-end">
+                      <Button
+                        size="xs"
+                        variant="subtle"
+                        leftSection={<IconPencil size={14} />}
+                        onClick={() => startEdit(p.asset.id)}
+                      >
+                        Edit
+                      </Button>
+                    </Group>
+                    {p.asset.kind === "text" ? (
+                      <Text
+                        component="pre"
+                        size="sm"
+                        ff="monospace"
+                        style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0 }}
+                      >
+                        {content.get(p.asset.id) ?? ""}
+                      </Text>
+                    ) : (
+                      <TypographyStylesProvider>
+                        <Markdown remarkPlugins={[remarkGfm]}>
+                          {content.get(p.asset.id) ?? ""}
+                        </Markdown>
+                      </TypographyStylesProvider>
+                    )}
+                  </Stack>
                 )}
               </Accordion.Panel>
             </Accordion.Item>

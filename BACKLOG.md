@@ -51,7 +51,4 @@ Investigate:
 - Mapping `AssetKind` → list of applicable programs so the UI only offers valid targets.
 - Per-OS launch (`open` on macOS, `xdg-open`/direct exec on Linux, `start` on Windows).
 
-
-## allow editing md
-
 ## allow editing vars in scad

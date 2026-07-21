@@ -47,6 +47,17 @@ pub async fn add_doc(
     Ok(service::files::add_doc(&state.db, &state.library, object_id, Path::new(&source_path)).await?)
 }
 
+/// Overwrite an editable document (Markdown/`.txt`) with new content from the editor.
+#[tauri::command]
+#[specta::specta]
+pub async fn write_doc(
+    state: State<'_, AppState>,
+    asset_id: AssetId,
+    content: String,
+) -> Result<(), AppError> {
+    Ok(service::files::write_doc(&state.db, &state.library, asset_id, &content).await?)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn add_gcode(

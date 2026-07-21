@@ -143,6 +143,17 @@ async addDoc(objectId: ObjectId, sourcePath: string) : Promise<Result<Asset, App
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Overwrite an editable document (Markdown/`.txt`) with new content from the editor.
+ */
+async writeDoc(assetId: AssetId, content: string) : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("write_doc", { assetId, content }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async addGcode(objectId: ObjectId, sourcePath: string) : Promise<Result<[Asset, GcodeMetadata], AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("add_gcode", { objectId, sourcePath }) };

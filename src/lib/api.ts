@@ -58,6 +58,8 @@ export const api = {
     invoke<Asset>("add_cadquery", { objectId: object_id, sourcePath: source_path }),
   addDoc: (object_id: number, source_path: string) =>
     invoke<Asset>("add_doc", { objectId: object_id, sourcePath: source_path }),
+  writeDoc: (asset_id: number, content: string) =>
+    invoke<void>("write_doc", { assetId: asset_id, content }),
   addGcode: (object_id: number, source_path: string) =>
     invoke<[Asset, GcodeMetadata]>("add_gcode", { objectId: object_id, sourcePath: source_path }),
   removeAsset: (id: number) => invoke<void>("remove_asset", { id }),
