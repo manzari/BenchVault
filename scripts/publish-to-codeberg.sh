@@ -69,7 +69,8 @@ echo ">> Publishing BenchVault $VERSION to https://$HOST/$OWNER/$REPO"
 
 if [[ $BUILD -eq 1 ]]; then
   echo ">> Building bundles..."
-  ( cd "$REPO_ROOT" && npm run tauri build )
+  # Self-extract linuxdeploy instead of FUSE-mounting (fails on this host).
+  ( cd "$REPO_ROOT" && APPIMAGE_EXTRACT_AND_RUN=1 npm run tauri build )
 fi
 
 # Curl auth via stdin config so the token never lands in the process list.
