@@ -48,20 +48,20 @@ flowchart LR
 
 Everything you import is stored as a plain file in the managed library. The table shows what BenchVault does *beyond* storing it — parse metadata, preview in 3D, render, or hand off to the slicer.
 
-| Format | Stored |  Metadata   |    Preview    | Render |  Hand-off  |
-|---|:------:|:-----------:|:-------------:|:---:|:----------:|
-| **STL** (`.stl`) |   ✅   | ✅ geometry |      ✅       | — | ✅ to orca |
-| **OBJ** (`.obj`) |   ✅   | ✅ geometry |      ✅       | — |     —      |
-| **3MF** (`.3mf`) |   ✅   |     ✅      |       —       | — |     —      |
-| **G-code** (`.gcode`, `.gco`, `.g`) |   ✅   |     ✅      |       —       | — |     —      |
-| G-code binary (`.bgcode`) |   ✅   |      —      |       —       | — |     —      |
-| **OpenSCAD** (`.scad`) |   ✅   |  ✅ static  | ✅ via render | ✅ |     —      |
-| **CadQuery** (`.py`) |   ✅   |      —      |       —       | — |     —      |
-| **Markdown** (`.md`, `.markdown`) |   ✅   |      —      |   ✅ via render    | ✅ |     —      |
-| **Text** (`.txt`) |   ✅   |      —      |   ✅ verbatim    | — |     —      |
-| CAD / STEP (`.step`, `.stp`, `.iges`, `.igs`, `.f3d`, `.sldprt`) |   ✅   |      —      |       —       | — |     —      |
-| Images (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.bmp`, `.svg`) |   ✅   |      —      |       —       | — |     —      |
-| Anything else (`.pdf`, `.zip`, …) |   ✅   |      —      |       —       | — |     —      |
+| Format | Stored |  Metadata   |     Preview     | Render |    Hand-off     |
+|---|:------:|:-----------:|:---------------:|:------:|:---------------:|
+| **STL** (`.stl`) |   ✅   | ✅ geometry |       ✅        |   —    |   ✅ to orca    |
+| **OBJ** (`.obj`) |   ✅   | ✅ geometry |       ✅        |   —    |        —        |
+| **3MF** (`.3mf`) |   ✅   |     ✅      |        —        |   —    |   ✅ to orca    |
+| **G-code** (`.gcode`, `.gco`, `.g`) |   ✅   |     ✅      |        —        |   —    |        ✅ to usb drive        |
+| G-code binary (`.bgcode`) |   ✅   |      —      |        —        |   —    | ✅ to usb drive |
+| **OpenSCAD** (`.scad`) |   ✅   |  ✅ static  |  ✅ via render  |   ✅   |        —        |
+| **CadQuery** (`.py`) |   ✅   |      —      |        —        |   —    |        —        |
+| **Markdown** (`.md`, `.markdown`) |   ✅   |      —      |  ✅ via render  |   ✅   |        —        |
+| **Text** (`.txt`) |   ✅   |      —      |   ✅ verbatim   |   —    |        —        |
+| CAD / STEP (`.step`, `.stp`, `.iges`, `.igs`, `.f3d`, `.sldprt`) |   ✅   |      —      |        —        |   —    |        —        |
+| Images (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.bmp`, `.svg`) |   ✅   |      —      | ✅ some formats |   —    |        —        |
+| Anything else (`.pdf`, `.zip`, …) |   ✅   |      —      |        —        |   —    |        —        |
 
 Models (STL/OBJ/STEP/3MF) share one **Models** section; STL and OBJ render directly in the in-app 3D viewer, while STEP and 3MF are stored and listed (3MF still gets its geometry and metadata parsed on import). OpenSCAD and CadQuery scripts share a **CAD Scripts** section (OpenSCAD sources also render to a previewable mesh, and their parameters/dependencies are listed). Markdown files render as formatted notes in a **Docs / Notes** section, and plain `.txt` files render verbatim there too. Images double as object cover art (snapshot the 3D viewer, set any imported image, or let a 3MF's embedded thumbnail fill in). STL parts are the only assets sent to OrcaSlicer.
 ## Stack
