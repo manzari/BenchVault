@@ -6,6 +6,36 @@ A cross-platform (Linux-first) desktop app for organizing 3D-printing projects. 
 
 BenchVault owns a managed library on disk (human-readable folder layout), so your files stay plain files you can browse, back up, or take with you.
 
+## Screenshots
+
+![Library overview](docs/screenshots/01-library.png)
+
+![Object detail with STL preview](docs/screenshots/02-object-detail.png)
+
+<details>
+<summary>Regenerating these screenshots</summary>
+
+`make shots` builds a throwaway demo library inside Docker (your real library is never in reach) and drives the actual binary through `tauri-driver` to capture `docs/screenshots/`.
+
+The demo library is seeded by **importing real things from Thingiverse** through the same "Import from URL" code path the app ships, so the screenshots show genuine models, covers, authors and licenses rather than placeholder geometry. That needs a Thingiverse API token:
+
+1. Create an app at <https://www.thingiverse.com/developers/apps> (any type — you only need its **App Token**).
+2. Put it in the repo-root `.env`, which is gitignored:
+
+   ```sh
+   THINGIVERSE_TOKEN=your-app-token
+   ```
+
+`make shots` picks it up from there and passes it into the container; the seeder clears it from the demo database again once the imports are done. Same token works for the app's own "Import from URL" — paste it into Settings.
+
+```sh
+make build      # release binary
+make seed-bin   # demo seeder
+make shots      # seed + capture into docs/screenshots/
+```
+
+</details>
+
 ## Workflow
 
 BenchVault sits at the centre of a print project — from CAD source to a printed part — keeping every artifact filed against the Object it belongs to.

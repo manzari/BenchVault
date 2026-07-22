@@ -77,7 +77,10 @@ shots: shots-image ## Seed a demo library in Docker and capture docs/screenshots
 	@test -x "$(BIN)" || { echo "No release binary — run 'make build' first"; exit 1; }
 	@test -x "$(SEED)" || { echo "No seeder — run 'make seed-bin' first"; exit 1; }
 	docker rm -f bv-shots-run >/dev/null 2>&1 || true
+	set -a; [ -f .env ] && . ./.env; set +a; \
+	test -n "$$THINGIVERSE_TOKEN" || { echo "THINGIVERSE_TOKEN not set — see README 'Demo screenshots'"; exit 1; }; \
 	docker run --name bv-shots-run \
+		-e THINGIVERSE_TOKEN \
 		-v "$(BIN)":/app/benchvault:ro -v "$(SEED)":/app/seed_demo:ro \
 		--entrypoint /spike/run-shots.sh bv-shots
 	mkdir -p docs/screenshots

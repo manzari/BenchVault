@@ -2,23 +2,27 @@
 //! service layer rather than shipping a prebuilt .db, so the result is always
 //! whatever the current migrations + ingest code actually produce.
 //!
-//!   seed_demo [<data-dir>] [--force]
+//!   THINGIVERSE_TOKEN=... seed_demo <data-dir> [--force]
 //!
-//! Data dir defaults to $BENCHVAULT_DATA_DIR, else the platform app-data path.
+//! Objects are imported from real Thingiverse things through the same
+//! `service::imports` path the app's "Import from URL" button uses, so the demo
+//! library holds genuine models, covers, authors and licenses. That needs a
+//! Thingiverse app token in $THINGIVERSE_TOKEN (https://www.thingiverse.com/developers/apps).
+//!
+//! Data dir defaults to $BENCHVAULT_DATA_DIR.
 //! Refuses to touch a dir that already holds a benchvault.db unless --force.
 
-use std::f32::consts::PI;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use benchvault_lib::db;
-use benchvault_lib::domain::{CreateObjectInput, EntityKind, FolderId, ObjectId};
+use benchvault_lib::domain::{
+    CreateObjectInput, EntityKind, FolderId, ObjectId, UpdateObjectPatch,
+};
 use benchvault_lib::library::Library;
 use benchvault_lib::repository;
 use benchvault_lib::service;
-
-type Tri = [[f32; 3]; 3];
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -64,6 +68,22 @@ async fn main() -> anyhow::Result<()> {
     let fixtures = data_dir.join(".seed-fixtures");
     fs::create_dir_all(&fixtures)?;
 
+    // Every object comes from Thingiverse, so without a token there is nothing
+    // to seed — fail up front rather than producing an empty-looking library.
+    let token = std::env::var("THINGIVERSE_TOKEN")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "THINGIVERSE_TOKEN is not set.\n\
+                 The demo library is built by importing real things from Thingiverse, which needs\n\
+                 an app token: create an app at https://www.thingiverse.com/developers/apps and\n\
+                 copy its App Token into the repo-root .env as THINGIVERSE_TOKEN=..."
+            )
+        })?;
+    service::imports::set_thingiverse_token(&pool, Some(&token)).await?;
+
     // --- tags ---
     let tag = |name: &str, color: &str| {
         let pool = pool.clone();
@@ -75,40 +95,97 @@ async fn main() -> anyhow::Result<()> {
     let t_functional = tag("functional", "#845ef7").await?;
     let t_calibration = tag("calibration", "#fab005").await?;
     let t_printed = tag("printed", "#51cf66").await?;
+    let t_gridfinity = tag("gridfinity", "#e64980").await?;
+    let t_repair = tag("repair", "#fd7e14").await?;
 
     // --- folders ---
+    let f_calib = folder(&pool, &library, None, "Calibration").await?;
+    let f_workshop = folder(&pool, &library, None, "Workshop").await?;
+    let f_gridfinity = folder(&pool, &library, Some(f_workshop), "Gridfinity").await?;
+    let f_holders = folder(&pool, &library, Some(f_workshop), "Tool Holders").await?;
+    let f_jigs = folder(&pool, &library, Some(f_workshop), "Jigs & Fixtures").await?;
+    let f_household = folder(&pool, &library, None, "Household").await?;
+    let f_kitchen = folder(&pool, &library, Some(f_household), "Kitchen").await?;
+    let f_bath = folder(&pool, &library, Some(f_household), "Bathroom").await?;
+    let f_desk = folder(&pool, &library, Some(f_household), "Desk").await?;
+    let f_repairs = folder(&pool, &library, None, "Repairs").await?;
+    let f_caravan = folder(&pool, &library, Some(f_repairs), "Caravan").await?;
+    let f_appliances = folder(&pool, &library, Some(f_repairs), "Appliances").await?;
     let f_upgrades = folder(&pool, &library, None, "Printer Upgrades").await?;
     let f_ender = folder(&pool, &library, Some(f_upgrades), "Ender 3").await?;
-    let f_household = folder(&pool, &library, None, "Household").await?;
-    let f_calib = folder(&pool, &library, None, "Calibration").await?;
+    let f_mk3 = folder(&pool, &library, Some(f_upgrades), "Prusa MK3S").await?;
 
-    // --- objects ---
-    let cube_stl = write_stl(&fixtures, "xyz_calibration_cube.stl", &cube(20.0))?;
-    let cube_obj = object(
+    // --- filler objects: no files, they exist to give the folder tree depth ---
+    let stubs: &[(FolderId, &str, &str, &[benchvault_lib::domain::TagId])] = &[
+        (f_calib, "Temperature Tower", "220→190°C in 10° steps.", &[t_pla.id]),
+        (f_calib, "Retraction Test", "Twin towers for stringing.", &[t_pla.id]),
+        (f_calib, "Flow Cube", "Single-wall cube for extrusion multiplier.", &[]),
+        (f_calib, "First Layer Patch", "Squish check before long prints.", &[t_printed.id]),
+        (f_calib, "Bridging Test", "Unsupported spans up to 60mm.", &[]),
+        (f_calib, "Overhang Fan", "45–80° wedges for part-cooling tuning.", &[]),
+        (f_gridfinity, "Baseplate 4x4", "Screwed to the bench under the vice.", &[t_gridfinity.id, t_printed.id]),
+        (f_gridfinity, "Caliper Bin 1x3", "Cutout for the digital calipers.", &[t_gridfinity.id]),
+        (f_gridfinity, "Screwdriver Bin 2x2", "Angled slots, handles facing out.", &[t_gridfinity.id]),
+        (f_gridfinity, "Label Holder", "Clip-on for the front lip of a bin.", &[t_gridfinity.id]),
+        (f_holders, "Soldering Iron Stand", "Weighted base, brass wool cup.", &[t_functional.id, t_printed.id]),
+        (f_holders, "Drill Bit Index", "1–10mm in 0.5 steps.", &[t_functional.id]),
+        (f_holders, "Hex Key Rack", "Wall mount, metric set.", &[t_petg.id]),
+        (f_holders, "Bench Hook", "Clamps to the front edge.", &[]),
+        (f_jigs, "Corner Clamp 90°", "For glue-ups on plywood boxes.", &[t_petg.id, t_functional.id]),
+        (f_jigs, "Drilling Guide 6mm", "Steel bushing pressed in.", &[t_functional.id]),
+        (f_jigs, "Sanding Block", "Takes a quarter sheet.", &[t_printed.id]),
+        (f_kitchen, "Egg Cup", "Prints without supports at 45°.", &[t_pla.id, t_printed.id]),
+        (f_kitchen, "Spice Jar Lid", "Fits the 63mm supermarket jars.", &[t_pla.id]),
+        (f_kitchen, "Herb Stripper", "Graduated holes for thyme and rosemary.", &[t_petg.id]),
+        (f_kitchen, "Coffee Scoop 10g", "Levelled, matched to the grinder.", &[t_printed.id]),
+        (f_bath, "Toothbrush Holder", "Wall mount, drains into the sink.", &[t_petg.id]),
+        (f_bath, "Razor Hook", "Adhesive pad, no drilling in the tiles.", &[]),
+        (f_desk, "Cable Clip", "Snap-fit, routes along the desk underside.", &[t_petg.id, t_functional.id, t_printed.id]),
+        (f_desk, "Headphone Hook", "Clamps to the monitor arm.", &[t_printed.id]),
+        (f_desk, "Monitor Riser Foot", "Pair of them, 60mm lift.", &[t_pla.id]),
+        (f_desk, "Pen Cup", "Hex pattern, prints vase mode.", &[]),
+        (f_caravan, "Blind Pull Cord Knob", "The originals go brittle in the sun.", &[t_repair.id, t_petg.id]),
+        (f_caravan, "Window Catch", "Left-hand version; mirror for the right.", &[t_repair.id]),
+        (f_caravan, "Table Leg Foot", "Stops the leg chewing the floor.", &[t_repair.id, t_printed.id]),
+        (f_appliances, "Dishwasher Rack Cap", "Rust guard for the bent tines.", &[t_repair.id]),
+        (f_appliances, "Vacuum Hose Adapter", "35mm hose to the dust extractor port.", &[t_repair.id, t_petg.id]),
+        (f_appliances, "Washing Machine Filter Cap", "Spare, the tab snapped off.", &[t_repair.id]),
+        (f_ender, "Filament Guide", "Keeps the path off the frame.", &[t_pla.id, t_functional.id, t_printed.id]),
+        (f_ender, "Bed Levelling Knob", "Oversized, easier on a hot bed.", &[t_pla.id, t_functional.id]),
+        (f_ender, "Belt Tensioner", "Y axis; replaces the zip tie.", &[t_petg.id]),
+        (f_ender, "Display Cover", "Keeps dust out of the LCD.", &[]),
+        (f_mk3, "Spool Holder Arm", "Bearing-mounted, for 2kg spools.", &[t_functional.id]),
+        (f_mk3, "PSU Cover Vent", "Louvred, drops the PSU by ~6°C.", &[t_petg.id, t_printed.id]),
+    ];
+    for (folder_id, name, notes, tags) in stubs {
+        let id = stub(&pool, &library, *folder_id, name, notes).await?;
+        attach(&pool, id, tags).await?;
+    }
+
+    // --- objects (imported from Thingiverse through the real import path) ---
+    let benchy = import(
         &pool,
         &library,
-        "XYZ Calibration Cube",
+        763622,
         Some(f_calib),
-        Some("Standard 20mm cube for dialling in dimensional accuracy. Measure each axis with calipers; anything outside ±0.1mm means steps/mm needs a look."),
-        Some("https://www.thingiverse.com/thing:1278865"),
-        Some("CHEP"),
-        Some("CC BY 4.0"),
-        &[&cube_stl],
+        "The reference torture test. Every new filament or nozzle change gets one before anything \
+         that matters goes on the bed — the bow overhang and the chimney hole tell you most of \
+         what you need to know.",
     )
     .await?;
     add_gcode(
         &pool,
         &library,
-        cube_obj,
+        benchy,
         &write_gcode(
             &fixtures,
-            "xyz_cube_0.2_PLA.gcode",
+            "3DBenchy_0.2_PLA.gcode",
             GcodeSpec {
                 slicer: "PrusaSlicer",
                 version: "2.8.1",
-                time: "38m 12s",
-                filament_mm: 1284.4,
-                filament_g: 3.83,
+                time: "1h 42m 30s",
+                filament_mm: 3540.2,
+                filament_g: 10.56,
                 filament_type: "PLA",
                 layer_height: 0.2,
                 nozzle: 215,
@@ -121,42 +198,39 @@ async fn main() -> anyhow::Result<()> {
     add_doc(
         &pool,
         &library,
-        cube_obj,
+        benchy,
         &write_text(
             &fixtures,
             "NOTES.md",
-            "# Calibration log\n\n| Date | X | Y | Z | Notes |\n|---|---|---|---|---|\n| 2026-03-02 | 20.04 | 20.06 | 19.98 | Stock steps/mm |\n| 2026-03-09 | 20.01 | 20.02 | 20.00 | After e-steps tune |\n\n## Next\n\n- [x] Recalibrate extruder\n- [ ] Re-run at 0.12mm layer height\n",
+            "# Benchy log\n\n| Date | Filament | Result |\n|---|---|---|\n| 2026-03-02 | Prusament PLA Galaxy Black | Stringing across the cabin windows |\n| 2026-03-09 | Prusament PLA Galaxy Black | Clean after +0.4mm retraction |\n\n## Next\n\n- [x] Tune retraction\n- [ ] Re-run at 0.12mm layer height\n",
         )?,
     )
     .await?;
-    attach(&pool, cube_obj, &[t_calibration.id, t_pla.id, t_printed.id]).await?;
+    attach(&pool, benchy, &[t_calibration.id, t_pla.id, t_printed.id]).await?;
 
-    let clip_stl = write_stl(&fixtures, "cable_clip.stl", &torus(9.0, 3.0, 48, 20))?;
-    let clip_obj = object(
+    let hex_holder = import(
         &pool,
         &library,
-        "Cable Clip",
-        Some(f_household),
-        Some("Snap-fit clip for routing desk cables along the underside of the tabletop. Printed in PETG so it keeps its spring in a warm room."),
-        None,
-        None,
-        None,
-        &[&clip_stl],
+        7379183,
+        Some(f_gridfinity),
+        "Gridfinity bin for hex bits, held by an integrated compliant spring instead of a friction \
+         fit — the bits stay put upside down but still pull out by hand. Print with random seams \
+         so they don't line up along one of the thin springs.",
     )
     .await?;
     add_gcode(
         &pool,
         &library,
-        clip_obj,
+        hex_holder,
         &write_gcode(
             &fixtures,
-            "cable_clip_0.2_PETG.gcode",
+            "hex_bit_holder_2x3_0.2_PETG.gcode",
             GcodeSpec {
                 slicer: "OrcaSlicer",
                 version: "2.2.0",
-                time: "1h 6m 40s",
-                filament_mm: 3120.9,
-                filament_g: 9.71,
+                time: "3h 18m 04s",
+                filament_mm: 9840.7,
+                filament_g: 30.62,
                 filament_type: "PETG",
                 layer_height: 0.2,
                 nozzle: 240,
@@ -166,49 +240,46 @@ async fn main() -> anyhow::Result<()> {
         )?,
     )
     .await?;
-    attach(&pool, clip_obj, &[t_petg.id, t_functional.id, t_printed.id]).await?;
-
-    let knob_stl = write_stl(&fixtures, "bed_level_knob.stl", &hex_prism(14.0, 9.0))?;
-    let knob_obj = object(
+    attach(
         &pool,
-        &library,
-        "Bed Levelling Knob",
-        Some(f_ender),
-        Some("Oversized knurled knob — much easier to turn than the stock wheel when the bed is hot."),
-        None,
-        None,
-        Some("CC BY-NC 4.0"),
-        &[&knob_stl],
+        hex_holder,
+        &[t_gridfinity.id, t_functional.id, t_petg.id, t_printed.id],
     )
     .await?;
-    attach(&pool, knob_obj, &[t_pla.id, t_functional.id]).await?;
 
-    let guide_stl = write_stl(&fixtures, "filament_guide.stl", &pyramid(24.0, 30.0))?;
-    let guide_obj = object(
+    let threads = import(
         &pool,
         &library,
-        "Filament Guide",
-        Some(f_upgrades),
-        Some("Keeps the filament path off the frame so the extruder stops skipping on long retractions."),
-        None,
-        None,
-        None,
-        &[&guide_stl],
+        5445157,
+        Some(f_workshop),
+        "Printable metric threads and screws to pull from when a design needs a fastener that \
+         doesn't exist in the parts bin.",
+    )
+    .await?;
+    attach(&pool, threads, &[t_functional.id, t_pla.id]).await?;
+
+    let cutter = import(
+        &pool,
+        &library,
+        2938190,
+        Some(f_kitchen),
+        "Calavera cookie cutter for Día de los Muertos. Printed in PLA and only ever used on cold \
+         dough — it goes nowhere near the dishwasher.",
     )
     .await?;
     add_gcode(
         &pool,
         &library,
-        guide_obj,
+        cutter,
         &write_gcode(
             &fixtures,
-            "filament_guide_0.3_PLA.gcode",
+            "skull_cookie_cutter_0.3_PLA.gcode",
             GcodeSpec {
                 slicer: "SuperSlicer",
                 version: "2.5.59",
-                time: "22m 5s",
-                filament_mm: 742.0,
-                filament_g: 2.21,
+                time: "41m 18s",
+                filament_mm: 1420.5,
+                filament_g: 4.24,
                 filament_type: "PLA",
                 layer_height: 0.3,
                 nozzle: 210,
@@ -218,14 +289,112 @@ async fn main() -> anyhow::Result<()> {
         )?,
     )
     .await?;
-    attach(&pool, guide_obj, &[t_pla.id, t_functional.id]).await?;
+    attach(&pool, cutter, &[t_pla.id, t_printed.id]).await?;
+
+    let knob = import(
+        &pool,
+        &library,
+        7168368,
+        Some(f_repairs),
+        "The original control knob on the Truma B10 boiler cracked around the D-shaft. PETG holds \
+         up to the heat next to the flue where PLA crept.",
+    )
+    .await?;
+    add_doc(
+        &pool,
+        &library,
+        knob,
+        &write_text(
+            &fixtures,
+            "FITTING.md",
+            "# Fitting notes\n\n- Shaft is a 6mm D-cut; the printed bore needs no reaming at 0.4mm nozzle / 3 perimeters.\n- Push on cold — the shaft splines bite into PETG and hold without a grub screw.\n- 100% infill. At 20% the first one split along the D-flat within a season.\n",
+        )?,
+    )
+    .await?;
+    attach(
+        &pool,
+        knob,
+        &[t_repair.id, t_petg.id, t_functional.id, t_printed.id],
+    )
+    .await?;
+
+    // Don't leave a live API token sitting in a database that gets published as
+    // screenshots and copied around.
+    service::imports::set_thingiverse_token(&pool, None).await?;
 
     // Fixtures were copied into the managed library by the ingest path; the
     // staging copies are just clutter in the demo image.
     let _ = fs::remove_dir_all(&fixtures);
 
-    println!("seeded {} — 4 objects, 4 folders, 5 tags", data_dir.display());
+    println!(
+        "seeded {} — {} objects (5 imported), 15 folders, 7 tags",
+        data_dir.display(),
+        5 + stubs.len()
+    );
     Ok(())
+}
+
+/// Object with no files — filler so the folder tree has some depth to show.
+async fn stub(
+    pool: &sqlx::SqlitePool,
+    library: &Library,
+    folder_id: FolderId,
+    name: &str,
+    notes: &str,
+) -> anyhow::Result<ObjectId> {
+    let input = CreateObjectInput {
+        name: name.to_string(),
+        folder_id: Some(folder_id),
+        notes: Some(notes.to_string()),
+        source_url: None,
+        author: None,
+        license: None,
+        stl_paths: Vec::new(),
+        cover_image_path: None,
+    };
+    Ok(service::objects::create_with_files(pool, library, input)
+        .await
+        .map_err(|e| anyhow::anyhow!("object {name}: {e}"))?
+        .id)
+}
+
+/// Imports a thing through the same service the app's "Import from URL" uses,
+/// then layers on the notes (the importer doesn't carry a description over).
+async fn import(
+    pool: &sqlx::SqlitePool,
+    library: &Library,
+    thing_id: u64,
+    folder_id: Option<FolderId>,
+    notes: &str,
+) -> anyhow::Result<ObjectId> {
+    let url = format!("https://www.thingiverse.com/thing:{thing_id}");
+    let report = service::imports::import_from_url(pool, library, &url, folder_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("import {url}: {e}"))?;
+    if let Some(w) = &report.warning {
+        eprintln!("  warning: {w}");
+    }
+    if report.model_files_imported == 0 {
+        anyhow::bail!("{url}: no model files downloaded — a demo object with no models is useless");
+    }
+    println!(
+        "  thing:{thing_id} → {} ({} models, {} skipped)",
+        report.object.name, report.model_files_imported, report.files_skipped
+    );
+
+    let id = report.object.id;
+    service::objects::update(
+        pool,
+        library,
+        id,
+        UpdateObjectPatch {
+            notes: Some(notes.to_string()),
+            ..Default::default()
+        },
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("notes for thing:{thing_id}: {e}"))?;
+    Ok(id)
 }
 
 async fn folder(
@@ -237,34 +406,6 @@ async fn folder(
     Ok(service::folders::create(pool, library, parent, name)
         .await
         .map_err(|e| anyhow::anyhow!("folder {name}: {e}"))?
-        .id)
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn object(
-    pool: &sqlx::SqlitePool,
-    library: &Library,
-    name: &str,
-    folder_id: Option<FolderId>,
-    notes: Option<&str>,
-    source_url: Option<&str>,
-    author: Option<&str>,
-    license: Option<&str>,
-    stls: &[&Path],
-) -> anyhow::Result<ObjectId> {
-    let input = CreateObjectInput {
-        name: name.to_string(),
-        folder_id,
-        notes: notes.map(str::to_string),
-        source_url: source_url.map(str::to_string),
-        author: author.map(str::to_string),
-        license: license.map(str::to_string),
-        stl_paths: stls.iter().map(|p| p.display().to_string()).collect(),
-        cover_image_path: None,
-    };
-    Ok(service::objects::create_with_files(pool, library, input)
-        .await
-        .map_err(|e| anyhow::anyhow!("object {name}: {e}"))?
         .id)
 }
 
@@ -346,98 +487,4 @@ fn write_text(dir: &Path, name: &str, body: &str) -> anyhow::Result<PathBuf> {
     let path = dir.join(name);
     fs::write(&path, body)?;
     Ok(path)
-}
-
-fn write_stl(dir: &Path, name: &str, tris: &[Tri]) -> anyhow::Result<PathBuf> {
-    let path = dir.join(name);
-    let mut f = fs::File::create(&path)?;
-    f.write_all(&[0u8; 80])?;
-    f.write_all(&(tris.len() as u32).to_le_bytes())?;
-    for t in tris {
-        for c in normal(t) {
-            f.write_all(&c.to_le_bytes())?;
-        }
-        for v in t {
-            for c in v {
-                f.write_all(&c.to_le_bytes())?;
-            }
-        }
-        f.write_all(&0u16.to_le_bytes())?;
-    }
-    Ok(path)
-}
-
-fn normal(t: &Tri) -> [f32; 3] {
-    let u = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
-    let v = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
-    let n = [
-        u[1] * v[2] - u[2] * v[1],
-        u[2] * v[0] - u[0] * v[2],
-        u[0] * v[1] - u[1] * v[0],
-    ];
-    let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-    if len == 0.0 { [0.0, 0.0, 0.0] } else { [n[0] / len, n[1] / len, n[2] / len] }
-}
-
-fn quad(a: [f32; 3], b: [f32; 3], c: [f32; 3], d: [f32; 3]) -> [Tri; 2] {
-    [[a, b, c], [a, c, d]]
-}
-
-fn cube(s: f32) -> Vec<Tri> {
-    let (o, e) = (0.0, s);
-    let v = |x: f32, y: f32, z: f32| [x, y, z];
-    let mut t = Vec::new();
-    t.extend(quad(v(o,o,o), v(e,o,o), v(e,e,o), v(o,e,o)));
-    t.extend(quad(v(o,o,e), v(o,e,e), v(e,e,e), v(e,o,e)));
-    t.extend(quad(v(o,o,o), v(o,e,o), v(o,e,e), v(o,o,e)));
-    t.extend(quad(v(e,o,o), v(e,o,e), v(e,e,e), v(e,e,o)));
-    t.extend(quad(v(o,o,o), v(o,o,e), v(e,o,e), v(e,o,o)));
-    t.extend(quad(v(o,e,o), v(e,e,o), v(e,e,e), v(o,e,e)));
-    t
-}
-
-fn pyramid(base: f32, height: f32) -> Vec<Tri> {
-    let h = base / 2.0;
-    let apex = [0.0, 0.0, height];
-    let c = [
-        [-h, -h, 0.0], [h, -h, 0.0], [h, h, 0.0], [-h, h, 0.0],
-    ];
-    let mut t = vec![[c[0], c[2], c[1]], [c[0], c[3], c[2]]];
-    for i in 0..4 {
-        t.push([c[i], c[(i + 1) % 4], apex]);
-    }
-    t
-}
-
-fn hex_prism(radius: f32, height: f32) -> Vec<Tri> {
-    let pt = |i: usize, z: f32| {
-        let a = PI / 3.0 * i as f32;
-        [radius * a.cos(), radius * a.sin(), z]
-    };
-    let mut t = Vec::new();
-    for i in 1..5 {
-        t.push([pt(0, 0.0), pt(i + 1, 0.0), pt(i, 0.0)]);
-        t.push([pt(0, height), pt(i, height), pt(i + 1, height)]);
-    }
-    for i in 0..6 {
-        let j = (i + 1) % 6;
-        t.extend(quad(pt(i, 0.0), pt(j, 0.0), pt(j, height), pt(i, height)));
-    }
-    t
-}
-
-fn torus(major: f32, minor: f32, seg_u: usize, seg_v: usize) -> Vec<Tri> {
-    let pt = |i: usize, j: usize| {
-        let u = 2.0 * PI * (i % seg_u) as f32 / seg_u as f32;
-        let v = 2.0 * PI * (j % seg_v) as f32 / seg_v as f32;
-        let r = major + minor * v.cos();
-        [r * u.cos(), r * u.sin(), minor * v.sin()]
-    };
-    let mut t = Vec::new();
-    for i in 0..seg_u {
-        for j in 0..seg_v {
-            t.extend(quad(pt(i, j), pt(i + 1, j), pt(i + 1, j + 1), pt(i, j + 1)));
-        }
-    }
-    t
 }
