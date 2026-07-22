@@ -111,7 +111,15 @@ async fn import_thingiverse(
 
     // Cover image first so the object has a thumbnail even if file downloads fail.
     let cover_local = if let Some(cover_url) = meta.cover_image_url.as_deref() {
-        match download_to(&client, cover_url, staging.path(), "cover.jpg").await {
+        let mut got = download_to(&client, cover_url, staging.path(), "cover.jpg").await;
+        // resize.thingiverse.com 404s on some assets even though the underlying
+        // CDN file is fine — retry with the origin URL it was wrapping.
+        if got.is_err() {
+            if let Some(origin) = unwrap_resize_proxy(cover_url) {
+                got = download_to(&client, &origin, staging.path(), "cover.jpg").await;
+            }
+        }
+        match got {
             Ok(p) => Some(p),
             Err(e) => {
                 eprintln!("[thingiverse] cover download failed: {e}");
@@ -346,6 +354,24 @@ fn http_err(e: reqwest::Error) -> ServiceError {
     ServiceError::Other(format!("http: {e}"))
 }
 
+/// `https://resize.thingiverse.com/?url=https://cdn…/x.png&w=628…` → the `url=` value.
+/// Returns None for anything that isn't a resize-proxy URL.
+fn unwrap_resize_proxy(url: &str) -> Option<String> {
+    if !url.contains("resize.thingiverse.com") {
+        return None;
+    }
+    let after = url.split("url=").nth(1)?;
+    // The inner URL is not percent-encoded here, so it ends at the proxy's own
+    // next parameter rather than at any `&` (the inner URL has none in practice).
+    let inner = after.split("&w=").next().unwrap_or(after);
+    let inner = inner.split("&h=").next().unwrap_or(inner);
+    if inner.starts_with("http") {
+        Some(inner.to_string())
+    } else {
+        None
+    }
+}
+
 fn is_supported_model_file(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     // Treat any of these as STL parts. The repository stores them all as kind=stl; that's a known
@@ -433,6 +459,18 @@ mod tests {
         "#;
         let v = extract_product_json_ld(html).unwrap();
         assert_eq!(v.get("name").and_then(|n| n.as_str()), Some("hello"));
+    }
+
+    #[test]
+    fn unwraps_resize_proxy_urls() {
+        assert_eq!(
+            unwrap_resize_proxy(
+                "https://resize.thingiverse.com/?url=https://cdn.thingiverse.com/assets/a/b/knob.png&w=628&h=472&fit=contain"
+            )
+            .as_deref(),
+            Some("https://cdn.thingiverse.com/assets/a/b/knob.png")
+        );
+        assert_eq!(unwrap_resize_proxy("https://cdn.thingiverse.com/x.png"), None);
     }
 
     #[test]
