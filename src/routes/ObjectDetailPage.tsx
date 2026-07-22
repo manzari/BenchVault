@@ -373,6 +373,7 @@ export function ObjectDetailPage() {
                     <EditableText
                       value={data.object.source_url}
                       placeholder="https://…"
+                      truncate
                       onSave={(next) => patch({ source_url: next })}
                     />
                   </div>

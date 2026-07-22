@@ -19,7 +19,8 @@ export function EditableText({
   size = "sm",
   fw,
   c,
-}: BaseProps) {
+  truncate = false,
+}: BaseProps & { truncate?: boolean }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
   const ref = useRef<HTMLInputElement>(null);
@@ -64,9 +65,16 @@ export function EditableText({
       size={size}
       fw={fw}
       c={isEmpty ? "dimmed" : c}
-      style={{ cursor: "text", minHeight: "1.2em" }}
+      style={{
+        cursor: "text",
+        minHeight: "1.2em",
+        maxWidth: "100%",
+        ...(truncate
+          ? { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }
+          : { overflowWrap: "anywhere" }),
+      }}
       onClick={() => setEditing(true)}
-      title="Click to edit"
+      title={isEmpty ? "Click to edit" : value}
     >
       {isEmpty ? emptyText : value}
     </Text>
@@ -125,7 +133,12 @@ export function EditableTextarea({
     <Text
       size={size}
       c={isEmpty ? "dimmed" : undefined}
-      style={{ cursor: "text", whiteSpace: "pre-wrap", minHeight: "1.2em" }}
+      style={{
+        cursor: "text",
+        whiteSpace: "pre-wrap",
+        overflowWrap: "anywhere",
+        minHeight: "1.2em",
+      }}
       onClick={() => setEditing(true)}
       title="Click to edit (Ctrl+Enter to save)"
     >
