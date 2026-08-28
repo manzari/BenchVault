@@ -1,4 +1,4 @@
-Mirrored on GitHub — development happens on Codeberg: https://codeberg.org/manzari/BenchVault
+Mirrored on GitHub — development happens here: https://git.hauptstadt.monster/manzari/BenchVault
 
 # BenchVault
 
